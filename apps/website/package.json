@@ -16,6 +16,7 @@
   "dependencies": {
     "@base-ui/react": "catalog:",
     "@fontsource-variable/geist": "catalog:",
+    "@miniclaw/shared": "workspace:*",
     "@tailwindcss/vite": "catalog:",
     "class-variance-authority": "catalog:",
     "clsx": "catalog:",

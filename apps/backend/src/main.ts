@@ -1,9 +1,13 @@
 import { serve } from "@hono/node-server";
 
-import { app } from "./app.js";
+import { app, services } from "./app.js";
 
-const port = Number(process.env.PORT ?? 3001);
+await services.ready;
 
-serve({ fetch: app.fetch, port });
+const config = await services.configStore.load();
+const port = Number(process.env.PORT ?? config.server.port);
+const hostname = process.env.HOST ?? config.server.host;
 
-console.log(`Backend listening on http://localhost:${port}`);
+serve({ fetch: app.fetch, hostname, port });
+
+console.log(`Backend listening on http://${hostname}:${port}`);
