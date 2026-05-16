@@ -26,6 +26,9 @@ catalog:
   react-dom: ^19.2.6
   "@types/react": ^19.2.7
   "@types/react-dom": ^19.2.3
+  "@hono/node-server": ^1.19.6
+  hono: ^4.10.5
+  tsx: ^4.21.0
 overrides:
   vite: "catalog:"
   vitest: "catalog:"
@@ -37,4 +40,5 @@ peerDependencyRules:
     vite: "*"
     vitest: "*"
 allowBuilds:
+  esbuild: true
   msw: true
