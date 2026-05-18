@@ -1,10 +1,7 @@
-# Python
-.ruff_cache/
-__pycache__/
-*.py[cod]
-*.egg-info/
+# Node & TypeScript
+node_modules/
 dist/
-.venv/
+*.tsbuildinfo
 
 # Local data
 .miniclaw/
@@ -22,3 +19,5 @@ dist/
 
 # Environment variables
 .env
+.env.*
+!.env.example

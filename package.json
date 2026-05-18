@@ -1,0 +1,32 @@
+{
+  "name": "miniclaw",
+  "version": "1.0.0",
+  "description": "",
+  "main": "index.ts",
+  "packageManager": "pnpm@10.33.2",
+  "directories": {
+    "doc": "docs"
+  },
+  "scripts": {
+    "start": "tsx index.ts start",
+    "build": "tsc",
+    "test": "echo \"Error: no test specified\" && exit 1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/zAcherttp/miniclaw.git"
+  },
+  "keywords": [],
+  "author": "",
+  "license": "ISC",
+  "type": "commonjs",
+  "devDependencies": {
+    "@types/node": "^25.8.0",
+    "chalk": "^4.1.2",
+    "commander": "^14.0.3",
+    "dotenv": "^17.4.2",
+    "tsx": "^4.22.1",
+    "typescript": "^6.0.3",
+    "zod": "^4.4.3"
+  }
+}
