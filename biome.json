@@ -6,15 +6,12 @@
 		"useIgnoreFile": true
 	},
 	"files": {
-		"includes": [
-			"**",
-			"!!**/dist"
-		]
+		"includes": ["**", "!**/*.generated.js", "!!**/dist"]
 	},
 	"formatter": {
 		"enabled": true,
 		"indentStyle": "tab",
-		"lineWidth": 2
+		"indentWidth": 2
 	},
 	"linter": {
 		"enabled": true,

@@ -2,14 +2,10 @@ import type { MessageBus } from "@/bus/queue";
 
 export abstract class Channel {
 	protected bus: MessageBus;
-	public running: boolean =
-		false;
+	public running: boolean = false;
 
-	constructor(
-		bus: MessageBus,
-	) {
-		this.bus =
-			bus;
+	constructor(bus: MessageBus) {
+		this.bus = bus;
 	}
 
 	abstract start(): Promise<void>;
