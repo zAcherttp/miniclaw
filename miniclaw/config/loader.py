@@ -1,9 +1,11 @@
 """Configuration loader for Miniclaw."""
+
 import json
 from pathlib import Path
 from loguru import logger
 from .schema import AppConfig
 from .paths import get_config_path
+
 
 def load_config(path: Path | None = None) -> AppConfig:
     cfg_path = path or get_config_path()
@@ -16,6 +18,7 @@ def load_config(path: Path | None = None) -> AppConfig:
     except Exception as e:
         logger.warning(f"Failed to load config: {e}")
         return AppConfig()
+
 
 def save_config(config: AppConfig, path: Path | None = None) -> None:
     cfg_path = path or get_config_path()

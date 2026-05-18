@@ -9,5 +9,5 @@ __all__ = [
     "get_workspace_dir",
     "get_app_dir",
     "load_config",
-    "save_config"
+    "save_config",
 ]
