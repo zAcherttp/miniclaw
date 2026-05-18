@@ -3,6 +3,7 @@ import { useCallback, useEffect, useState } from "react";
 import type { MiniclawConfig, SystemPathsResponse } from "@miniclaw/shared";
 
 import { AppShell } from "../components/layout/AppShell";
+import { AgentMonitorView } from "../features/agent/AgentMonitorView";
 import { TelegramView } from "../features/channels/TelegramView";
 import { CalendarConnectorView } from "../features/connectors/CalendarConnectorView";
 import { OverviewView } from "../features/overview/OverviewView";
@@ -108,6 +109,7 @@ function ActiveView({
   onChange: (config: MiniclawConfig) => void;
   paths: SystemPathsResponse | null;
 }) {
+  if (activeView === "agent") return <AgentMonitorView config={config} />;
   if (activeView === "providers") return <ProvidersView config={config} onChange={onChange} />;
   if (activeView === "telegram") return <TelegramView config={config} onChange={onChange} />;
   if (activeView === "calendar") {

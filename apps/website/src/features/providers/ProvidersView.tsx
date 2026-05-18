@@ -1,6 +1,6 @@
 import type { MiniclawConfig, ProviderItemConfig } from "@miniclaw/shared";
 
-import { Field, TextInput } from "../../components/layout/Field";
+import { Field, SelectInput, TextInput } from "../../components/layout/Field";
 
 type ProvidersViewProps = {
   config: MiniclawConfig;
@@ -8,8 +8,9 @@ type ProvidersViewProps = {
 };
 
 const defaultProvider: ProviderItemConfig = {
+  kind: "openai-compatible",
   apiKey: "${OPENROUTER_API_KEY}",
-  baseUrl: null,
+  baseUrl: "https://openrouter.ai/api/v1",
   model: null,
 };
 
@@ -50,6 +51,31 @@ export function ProvidersView({ config, onChange }: ProvidersViewProps) {
         />
       </Field>
       <Field
+        label="Provider kind"
+        description="OpenAI-compatible covers OpenRouter, OpenAI, Azure-compatible gateways, and local proxies. Ollama runs locally."
+      >
+        <SelectInput
+          value={provider.kind}
+          onChange={(event) =>
+            updateProvider({
+              ...provider,
+              kind: event.currentTarget.value === "ollama" ? "ollama" : "openai-compatible",
+              apiKey:
+                event.currentTarget.value === "ollama"
+                  ? null
+                  : (provider.apiKey ?? "${OPENROUTER_API_KEY}"),
+              baseUrl:
+                event.currentTarget.value === "ollama"
+                  ? (provider.baseUrl ?? "http://127.0.0.1:11434")
+                  : provider.baseUrl,
+            })
+          }
+        >
+          <option value="openai-compatible">OpenAI-compatible</option>
+          <option value="ollama">Ollama</option>
+        </SelectInput>
+      </Field>
+      <Field
         label="API key reference"
         description="Use an environment reference such as ${OPENROUTER_API_KEY}."
       >
@@ -58,6 +84,7 @@ export function ProvidersView({ config, onChange }: ProvidersViewProps) {
           onChange={(event) =>
             updateProvider({ ...provider, apiKey: event.currentTarget.value || null })
           }
+          disabled={provider.kind === "ollama"}
         />
       </Field>
       <Field label="Model">
@@ -71,7 +98,11 @@ export function ProvidersView({ config, onChange }: ProvidersViewProps) {
       </Field>
       <Field label="Base URL">
         <TextInput
-          placeholder="Optional OpenAI-compatible endpoint"
+          placeholder={
+            provider.kind === "ollama"
+              ? "http://127.0.0.1:11434"
+              : "Optional OpenAI-compatible endpoint"
+          }
           value={provider.baseUrl ?? ""}
           onChange={(event) =>
             updateProvider({ ...provider, baseUrl: event.currentTarget.value || null })

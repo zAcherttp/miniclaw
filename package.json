@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "ready": "vp check && vp run -r test && vp run -r build",
-    "dev": "vp run --filter @miniclaw/shared build && vp run --filter website --filter backend --parallel dev",
+    "dev": "vp run --filter @miniclaw/shared --filter @miniclaw/prompts build && vp run --filter website --filter backend --parallel dev",
     "prepare": "vp config"
   },
   "devDependencies": {

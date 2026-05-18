@@ -1,7 +1,9 @@
 export type TelegramMode = "polling" | "webhook";
 export type TelegramGroupPolicy = "private-only" | "mention";
+export type ProviderKind = "openai-compatible" | "ollama";
 
 export type ProviderItemConfig = {
+  kind: ProviderKind;
   apiKey: string | null;
   baseUrl: string | null;
   model: string | null;
@@ -174,6 +176,7 @@ function mergeProvidersConfig(base: ProvidersConfig, value: unknown): ProvidersC
           .map(([key, item]) => [
             key,
             {
+              kind: readProviderKind(item.kind, base.items[key]?.kind ?? "openai-compatible"),
               apiKey: readNullableString(item.apiKey, base.items[key]?.apiKey ?? null),
               baseUrl: readNullableString(item.baseUrl, base.items[key]?.baseUrl ?? null),
               model: readNullableString(item.model, base.items[key]?.model ?? null),
@@ -243,6 +246,10 @@ function mergeGwsConfig(
 
 function readTelegramMode(value: unknown, fallback: TelegramMode): TelegramMode {
   return value === "polling" || value === "webhook" ? value : fallback;
+}
+
+function readProviderKind(value: unknown, fallback: ProviderKind): ProviderKind {
+  return value === "openai-compatible" || value === "ollama" ? value : fallback;
 }
 
 function readTelegramGroupPolicy(

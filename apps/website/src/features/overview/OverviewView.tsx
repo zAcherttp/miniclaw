@@ -19,8 +19,8 @@ export function OverviewView({ config, paths }: OverviewViewProps) {
       <section className="grid gap-2">
         <h1 className="text-2xl font-semibold tracking-tight">Foundation status</h1>
         <p className="max-w-2xl text-sm text-muted-foreground">
-          Phase 1 configures local storage, backend connectivity, channel settings, and connector
-          settings. Agent execution starts in later phases.
+          Phase 2 adds the local agent runtime, persisted run history, and a dashboard debug monitor
+          while normal user interaction remains channel-first.
         </p>
       </section>
 

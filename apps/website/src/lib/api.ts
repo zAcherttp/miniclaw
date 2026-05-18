@@ -1,6 +1,11 @@
 import type {
+  CreateAgentRunRequest,
+  CreateAgentRunResponse,
   ConfigResponse,
+  GetAgentRunResponse,
   HealthResponse,
+  ListAgentRunEventsResponse,
+  ListAgentRunsResponse,
   MiniclawConfig,
   SystemPathsResponse,
   UpdateConfigRequest,
@@ -52,6 +57,30 @@ export async function saveConfig(config: MiniclawConfig): Promise<ConfigResponse
     },
     body: JSON.stringify(body),
   });
+}
+
+export async function createAgentRun(
+  input: CreateAgentRunRequest,
+): Promise<CreateAgentRunResponse> {
+  return request<CreateAgentRunResponse>("/api/agent/runs", {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+    },
+    body: JSON.stringify(input),
+  });
+}
+
+export async function listAgentRuns(): Promise<ListAgentRunsResponse> {
+  return request<ListAgentRunsResponse>("/api/agent/runs");
+}
+
+export async function getAgentRun(runId: string): Promise<GetAgentRunResponse> {
+  return request<GetAgentRunResponse>(`/api/agent/runs/${runId}`);
+}
+
+export async function listAgentRunEvents(runId: string): Promise<ListAgentRunEventsResponse> {
+  return request<ListAgentRunEventsResponse>(`/api/agent/runs/${runId}/events`);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {

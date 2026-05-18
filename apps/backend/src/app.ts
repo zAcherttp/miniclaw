@@ -2,6 +2,9 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { logger } from "hono/logger";
 
+import { AgentRepository } from "./agent/repository.js";
+import { createAgentRuntime, type AgentRuntime } from "./agent/runtime.js";
+import { createAgentRoutes } from "./api/routes.agent.js";
 import { createConfigRoutes } from "./api/routes.config.js";
 import { createHealthRoutes } from "./api/routes.health.js";
 import { createConfigStore, type ConfigStore } from "./config/loader.js";
@@ -10,6 +13,7 @@ import { appendAppEvent } from "./storage/logs.js";
 import { ensureStoragePaths, resolveStoragePaths, type StoragePaths } from "./storage/paths.js";
 
 export type AppServices = {
+  agentRuntime: AgentRuntime;
   configStore: ConfigStore;
   paths: StoragePaths;
   ready: Promise<void>;
@@ -30,6 +34,7 @@ export function createApp(services: AppServices) {
   app.get("/", (c) => c.json({ name: "miniclaw-backend", status: "ok" }));
   app.route("/", createHealthRoutes(version));
   app.route("/", createConfigRoutes(services));
+  app.route("/", createAgentRoutes(services));
 
   return app;
 }
@@ -37,9 +42,12 @@ export function createApp(services: AppServices) {
 export function createDefaultServices(): AppServices {
   const paths = resolveStoragePaths();
   const configStore = createConfigStore(paths);
+  const repository = new AgentRepository(paths);
+  const agentRuntime = createAgentRuntime({ configStore, repository });
   const ready = bootstrapStorage(paths, configStore);
 
   return {
+    agentRuntime,
     configStore,
     paths,
     ready,

@@ -1,4 +1,5 @@
 import {
+  Activity,
   Bot,
   CalendarClock,
   KeyRound,
@@ -7,13 +8,18 @@ import {
   Settings,
 } from "lucide-react";
 
-export type ViewId = "overview" | "providers" | "telegram" | "calendar" | "settings";
+export type ViewId = "overview" | "agent" | "providers" | "telegram" | "calendar" | "settings";
 
 export const navigationItems = [
   {
     id: "overview",
     label: "Overview",
     icon: LayoutDashboard,
+  },
+  {
+    id: "agent",
+    label: "Agent Monitor",
+    icon: Activity,
   },
   {
     id: "providers",

@@ -7,16 +7,23 @@
   "scripts": {
     "dev": "tsx watch src/main.ts",
     "build": "tsc",
-    "start": "node dist/main.js"
+    "start": "node dist/main.js",
+    "test": "vp test"
   },
   "dependencies": {
     "@hono/node-server": "catalog:",
+    "@langchain/core": "catalog:",
+    "@langchain/langgraph": "catalog:",
+    "@langchain/ollama": "catalog:",
+    "@langchain/openai": "catalog:",
+    "@miniclaw/prompts": "workspace:*",
     "@miniclaw/shared": "workspace:*",
     "hono": "catalog:"
   },
   "devDependencies": {
     "@types/node": "catalog:",
     "tsx": "catalog:",
-    "typescript": "catalog:"
+    "typescript": "catalog:",
+    "vitest": "catalog:"
   }
 }
