@@ -1,16 +1,19 @@
 {
-  "name": "cli",
+  "name": "@miniclaw/cli",
   "version": "0.0.0",
   "private": true,
   "type": "module",
+  "main": "src/main.ts",
   "scripts": {
-    "dev": "vp dev",
-    "build": "tsc && vp build",
-    "preview": "vp preview"
+    "dev": "tsx watch src/main.ts",
+    "start": "tsx src/main.ts",
+    "check": "vp check"
   },
+  "dependencies": {},
   "devDependencies": {
-    "typescript": "~6.0.2",
-    "vite": "catalog:",
+    "@types/node": "catalog:",
+    "tsx": "catalog:",
+    "typescript": "catalog:",
     "vite-plus": "catalog:"
   }
 }
