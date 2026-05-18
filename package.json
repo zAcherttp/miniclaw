@@ -8,6 +8,9 @@
     "dev": "vp run --filter @miniclaw/cli dev",
     "prepare": "vp config"
   },
+  "dependencies": {
+    "@types/node": "catalog:"
+  },
   "devDependencies": {
     "vite-plus": "catalog:"
   },

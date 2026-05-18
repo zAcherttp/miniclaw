@@ -7,7 +7,7 @@ settings:
 catalogs:
   default:
     '@types/node':
-      specifier: ^24
+      specifier: ^24.12.4
       version: 24.12.4
     tsx:
       specifier: ^4.21.0
@@ -26,6 +26,10 @@ overrides:
 importers:
 
   .:
+    dependencies:
+      '@types/node':
+        specifier: 'catalog:'
+        version: 24.12.4
     devDependencies:
       vite-plus:
         specifier: 'catalog:'
