@@ -1,4 +1,4 @@
-import type { InboundMessage, OutboundMessage } from "@/bus/message";
+import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
 
@@ -71,13 +71,35 @@ export class AgentLoop {
 							? messageId.toString()
 							: undefined;
 
-				const out: OutboundMessage = {
+				const streamId = `echo-${Date.now()}`;
+				const words = responseText.split(" ");
+				for (let i = 0; i < words.length; i++) {
+					const word = words[i] + (i < words.length - 1 ? " " : "");
+					await this.bus.publishOutbound({
+						channel: msg.channel,
+						chat_id: msg.chat_id,
+						content: word,
+						reply_to: replyTo,
+						metadata: {
+							_stream_id: streamId,
+							_stream_delta: true,
+							reply_to: replyTo,
+						},
+					});
+					await new Promise((resolve) => setTimeout(resolve, 100));
+				}
+
+				await this.bus.publishOutbound({
 					channel: msg.channel,
 					chat_id: msg.chat_id,
-					content: responseText,
+					content: "",
 					reply_to: replyTo,
-				};
-				await this.bus.publishOutbound(out);
+					metadata: {
+						_stream_id: streamId,
+						_stream_end: true,
+						reply_to: replyTo,
+					},
+				});
 			} catch (e) {
 				if (this.running) {
 					console.error("Error processing inbound message:", e);

@@ -80,7 +80,7 @@ export class TelegramChannel extends Channel {
 
 			const text = delta || "...";
 			const draftId = this.createDraftId();
-			await this.sendMessageDraft(chatId, draftId, text);
+			await this.bot.api.sendMessageDraft(chatId, draftId, text);
 			buf = {
 				text,
 				draft_id: draftId,
@@ -105,7 +105,11 @@ export class TelegramChannel extends Channel {
 
 		const now = Date.now();
 		if (streamEnd || now - buf.last_edit >= this.editIntervalMs) {
-			await this.sendMessageDraft(chatId, buf.draft_id, buf.text || "...");
+			await this.bot.api.sendMessageDraft(
+				chatId,
+				buf.draft_id,
+				buf.text || "...",
+			);
 			buf.last_edit = now;
 		}
 
@@ -197,25 +201,6 @@ export class TelegramChannel extends Channel {
 			return replyTo.toString();
 		}
 		return undefined;
-	}
-
-	private async sendMessageDraft(
-		chat_id: number,
-		draft_id: number,
-		content: string,
-	): Promise<void> {
-		const apiWithDraft = this.bot.api as {
-			sendMessageDraft?: (
-				chatId: number,
-				draftId: number,
-				text: string,
-			) => Promise<unknown>;
-		};
-		if (!apiWithDraft.sendMessageDraft) {
-			throw new Error("Telegram API sendMessageDraft is unavailable");
-		}
-
-		await apiWithDraft.sendMessageDraft(chat_id, draft_id, content);
 	}
 
 	private reasoningStreamId(metadata: MessageMetadata): string {

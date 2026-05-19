@@ -15,6 +15,7 @@ const LOG_PREVIEW_LIMIT = 160;
 export class ChannelManager {
 	private readonly bus: MessageBus;
 	private readonly channels = new Map<string, Channel>();
+	private readonly outboundLogBufs = new Map<string, string>();
 	private dispatchTask?: Promise<void>;
 	private running = false;
 
@@ -145,6 +146,31 @@ export class ChannelManager {
 	}
 
 	private logOutbound(msg: OutboundMessage): void {
+		const metadata = msg.metadata ?? {};
+		const isStream =
+			metadata._stream_delta ||
+			metadata._stream_end ||
+			metadata._reasoning_delta ||
+			metadata._reasoning_end;
+
+		if (isStream) {
+			const streamId =
+				(typeof metadata._stream_id === "string" ? metadata._stream_id : "") ||
+				`${msg.channel}:${msg.chat_id}:${metadata._reasoning_delta || metadata._reasoning_end ? "reasoning" : "stream"}`;
+			let buf = this.outboundLogBufs.get(streamId) || "";
+			buf += msg.content || "";
+
+			if (metadata._stream_end || metadata._reasoning_end) {
+				this.outboundLogBufs.delete(streamId);
+				console.log(
+					`[Channels][OUT] channel=${msg.channel} chat=${msg.chat_id} message="${this.truncateForLog(buf)}" [streamed]`,
+				);
+			} else {
+				this.outboundLogBufs.set(streamId, buf);
+			}
+			return;
+		}
+
 		console.log(
 			`[Channels][OUT] channel=${msg.channel} chat=${msg.chat_id} message="${this.truncateForLog(msg.content)}"`,
 		);
