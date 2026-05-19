@@ -5,6 +5,7 @@ import * as dotenv from "dotenv";
 import type z from "zod";
 import { AgentLoop } from "@/agent/loop";
 import { MessageBus } from "@/bus/queue";
+import { ChannelManager } from "@/channels/manager";
 import { loadConfig, saveConfig } from "@/config/loader";
 import { getConfigPath, getEnvPath } from "@/config/paths";
 import { AppConfigSchema } from "@/config/schema";
@@ -23,7 +24,7 @@ function runOnboarding() {
 	if (!fs.existsSync(envPath)) {
 		fs.writeFileSync(
 			envPath,
-			'OLLAMA_API_KEY="" # (cloud only; optional)\n',
+			'OLLAMA_API_KEY="" # (cloud only; optional)\nTELEGRAM_BOT_TOKEN=""\n',
 			"utf-8",
 		);
 	}
@@ -77,21 +78,50 @@ program
 
 		const bus = new MessageBus();
 		const agentLoop = new AgentLoop(config, bus);
+		const channelManager = new ChannelManager(config, bus);
+
 		await agentLoop.start();
+		await channelManager.startAll();
+
+		if (channelManager.enabledChannels.length > 0) {
+			console.log(
+				chalk.green(
+					`Enabled channels: ${channelManager.enabledChannels.join(", ")}`,
+				),
+			);
+		} else {
+			console.log(
+				chalk.yellow(
+					"No channels enabled. Configure channels in config.json to receive messages.",
+				),
+			);
+		}
 
 		// Graceful shutdown handling
-		const shutdown = async () => {
-			console.log(chalk.yellow("\nHarsh shutdown intercepted (Ctrl+C)."));
-			console.log(chalk.yellow("Initiating graceful shutdown anyway..."));
-			await agentLoop.stop();
-			process.exit(0);
+		let shuttingDown = false;
+		let resolveShutdown: (() => void) | undefined;
+		const shutdownPromise = new Promise<void>((resolve) => {
+			resolveShutdown = resolve;
+		});
+
+		const shutdown = async (signal?: NodeJS.Signals) => {
+			if (shuttingDown) return;
+			shuttingDown = true;
+			if (signal) {
+				console.log(chalk.yellow(`\nReceived ${signal}. Shutting down...`));
+			}
+			await Promise.all([agentLoop.stop(), channelManager.stopAll()]);
+			resolveShutdown?.();
 		};
 
-		process.on("SIGINT", shutdown);
-		process.on("SIGTERM", shutdown);
+		process.once("SIGINT", () => {
+			void shutdown("SIGINT");
+		});
+		process.once("SIGTERM", () => {
+			void shutdown("SIGTERM");
+		});
 
-		// Keep Node running
-		await new Promise(() => {});
+		await shutdownPromise;
 	});
 
 program
