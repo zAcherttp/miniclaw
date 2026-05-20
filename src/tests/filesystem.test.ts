@@ -62,21 +62,10 @@ describe("Secure Filesystem & Search Tools", () => {
 			expect(res).toBe("Line 1\nLine 2\nLine 3\nLine 4\nLine 5");
 		});
 
-		it("should slice by startLine and endLine", async () => {
-			const res = await readFileTool.invoke({
-				path: "subfolder/test.txt",
-				startLine: 2,
-				endLine: 4,
-			});
-			// It appends a truncation warning because total lines > 4 (the end line)
-			expect(res).toContain("Line 2\nLine 3\nLine 4");
-			expect(res).toContain("TRUNCATED");
-		});
-
 		it("should slice by offset and limit", async () => {
 			const res = await readFileTool.invoke({
 				path: "subfolder/test.txt",
-				offset: 2, // starts at index 2 (Line 3, 1-indexed line 3)
+				offset: 3, // starts at 1-indexed line 3 (Line 3)
 				limit: 2,
 			});
 			expect(res).toContain("Line 3\nLine 4");

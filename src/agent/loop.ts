@@ -107,23 +107,12 @@ export class IncrementalThinkExtractor {
 }
 
 /**
- * Formats tool calls as a human-readable hint string.
+/**
+ * Formats tool calls as a human-readable hint string without asterisks or arguments.
  */
-function formatToolHints(
-	toolCalls: { name: string; args?: Record<string, unknown>; id?: string }[],
-): string {
-	const hints = toolCalls.map((tc) => {
-		const args = tc.args || {};
-		const argVal = Object.values(args)[0] || "";
-		const displayArg =
-			typeof argVal === "string"
-				? argVal.length > 30
-					? `${argVal.substring(0, 27)}...`
-					: argVal
-				: JSON.stringify(argVal);
-		return `${tc.name}(${displayArg})`;
-	});
-	return `Calling ${hints.join(", ")}`;
+function formatToolCallMessage(toolCalls: { name: string }[]): string {
+	const names = toolCalls.map((tc) => tc.name).join(", ");
+	return `⚙️ Calling ${names}`;
 }
 
 export class AgentLoop {
@@ -274,15 +263,16 @@ export class AgentLoop {
 
 								const toolCalls = response.tool_calls || [];
 								if (toolCalls.length > 0) {
-									const hintText = `\n\n⚙️ *${formatToolHints(toolCalls)}*...\n`;
+									const hintText = formatToolCallMessage(toolCalls);
 									await this.bus.publishOutbound({
 										channel: msg.channel,
 										chat_id: msg.chat_id,
 										content: hintText,
 										reply_to: replyTo,
 										metadata: {
-											_stream_id: streamId,
+											_stream_id: `tools-${streamId}`,
 											_stream_delta: true,
+											_overwrite: true,
 											reply_to: replyTo,
 										},
 									});
@@ -293,15 +283,37 @@ export class AgentLoop {
 										}
 										const tool = toolsByName.get(tc.name);
 										let result: string;
+										const argsStr = JSON.stringify(tc.args);
+										const truncatedArgs =
+											argsStr.length > 150
+												? `${argsStr.substring(0, 147)}...`
+												: argsStr;
+										logger.info(
+											`[AgentLoop] Calling tool: ${tc.name} with args: ${truncatedArgs}`,
+										);
 										if (!tool) {
 											result = `Error: Tool ${tc.name} is not available.`;
+											logger.error(
+												`[AgentLoop] Tool ${tc.name} is not available.`,
+											);
 										} else {
 											try {
 												result = await tool.invoke(tc.args);
+												const truncatedResult =
+													result.length > 200
+														? `${result.substring(0, 197)}...`
+														: result;
+												logger.info(
+													`[AgentLoop] Tool ${tc.name} returned: ${truncatedResult}`,
+												);
 											} catch (err) {
 												const errorMsg =
 													err instanceof Error ? err.message : String(err);
 												result = `Error executing tool ${tc.name}: ${errorMsg}`;
+												logger.error(
+													err,
+													`[AgentLoop] Tool ${tc.name} failed with error: ${errorMsg}`,
+												);
 											}
 										}
 										activeMessages.push(
@@ -454,15 +466,16 @@ export class AgentLoop {
 
 							const toolCalls = accumulatedMessage.tool_calls || [];
 							if (toolCalls.length > 0) {
-								const hintText = `\n\n⚙️ *${formatToolHints(toolCalls)}*...\n`;
+								const hintText = formatToolCallMessage(toolCalls);
 								await this.bus.publishOutbound({
 									channel: msg.channel,
 									chat_id: msg.chat_id,
 									content: hintText,
 									reply_to: replyTo,
 									metadata: {
-										_stream_id: streamId,
+										_stream_id: `tools-${streamId}`,
 										_stream_delta: true,
+										_overwrite: true,
 										reply_to: replyTo,
 									},
 								});
@@ -473,15 +486,37 @@ export class AgentLoop {
 									}
 									const tool = toolsByName.get(tc.name);
 									let result: string;
+									const argsStr = JSON.stringify(tc.args);
+									const truncatedArgs =
+										argsStr.length > 150
+											? `${argsStr.substring(0, 147)}...`
+											: argsStr;
+									logger.info(
+										`[AgentLoop] Calling tool: ${tc.name} with args: ${truncatedArgs}`,
+									);
 									if (!tool) {
 										result = `Error: Tool ${tc.name} is not available.`;
+										logger.error(
+											`[AgentLoop] Tool ${tc.name} is not available.`,
+										);
 									} else {
 										try {
 											result = await tool.invoke(tc.args);
+											const truncatedResult =
+												result.length > 200
+													? `${result.substring(0, 197)}...`
+													: result;
+											logger.info(
+												`[AgentLoop] Tool ${tc.name} returned: ${truncatedResult}`,
+											);
 										} catch (err) {
 											const errorMsg =
 												err instanceof Error ? err.message : String(err);
 											result = `Error executing tool ${tc.name}: ${errorMsg}`;
+											logger.error(
+												err,
+												`[AgentLoop] Tool ${tc.name} failed with error: ${errorMsg}`,
+											);
 										}
 									}
 									activeMessages.push(
@@ -513,6 +548,19 @@ export class AgentLoop {
 						},
 					});
 
+					// Finalize tools stream
+					await this.bus.publishOutbound({
+						channel: msg.channel,
+						chat_id: msg.chat_id,
+						content: "",
+						reply_to: replyTo,
+						metadata: {
+							_stream_id: `tools-${streamId}`,
+							_stream_end: true,
+							reply_to: replyTo,
+						},
+					});
+
 					if (assistantFinalResponse) {
 						await history.appendMessage("assistant", assistantFinalResponse);
 					}
@@ -526,7 +574,7 @@ export class AgentLoop {
 							`[AgentLoop] Execution aborted for chat ${msg.chat_id}`,
 						);
 
-						// Finalize stream if it was aborted mid-stream
+						// Finalize streams if aborted mid-stream
 						try {
 							await this.bus.publishOutbound({
 								channel: msg.channel,
@@ -535,6 +583,19 @@ export class AgentLoop {
 								reply_to: replyTo,
 								metadata: {
 									_stream_id: streamId,
+									_stream_end: true,
+									reply_to: replyTo,
+								},
+							});
+						} catch {}
+						try {
+							await this.bus.publishOutbound({
+								channel: msg.channel,
+								chat_id: msg.chat_id,
+								content: "",
+								reply_to: replyTo,
+								metadata: {
+									_stream_id: `tools-${streamId}`,
 									_stream_end: true,
 									reply_to: replyTo,
 								},

@@ -76,61 +76,40 @@ export const createFilesystemTools = (workspaceDir: string) => {
 	const readFileTool = new DynamicStructuredTool({
 		name: "read_file",
 		description:
-			"Reads a text file's contents relative to the workspace. Supports startLine, endLine, offset, and limit for pagination to keep prompt token counts optimal.",
+			"Reads a text file's contents relative to the workspace. Supports offset (1-indexed start line) and limit (number of lines to read) for pagination to keep prompt token counts optimal.",
 		schema: z.object({
 			path: z
 				.string()
 				.describe("The file path to read (relative to the workspace)"),
-			startLine: z
+			offset: z
 				.number()
 				.optional()
 				.default(1)
 				.describe("The starting line number to read (1-indexed, inclusive)"),
-			endLine: z
-				.number()
-				.optional()
-				.describe("The ending line number to read (inclusive, 1-indexed)"),
-			offset: z
-				.number()
-				.optional()
-				.describe(
-					"Line offset index to start reading from (0-indexed alternative)",
-				),
 			limit: z.number().optional().describe("Maximum number of lines to read"),
 		}),
-		func: async ({ path: filePath, startLine, endLine, offset, limit }) => {
+		func: async ({ path: filePath, offset, limit }) => {
 			try {
 				const securePath = resolveSecurePath(workspaceDir, filePath);
 				const content = await fs.readFile(securePath, "utf-8");
 				const lines = content.split(/\r?\n/);
 
-				// Reconcile offset/limit and startLine/endLine
-				let actualStart = startLine;
-				if (offset !== undefined) {
-					actualStart = offset + 1;
-				}
-
-				let actualEnd = endLine;
-				if (limit !== undefined) {
-					actualEnd = actualStart + limit - 1;
-				}
-
-				if (actualEnd === undefined) {
-					actualEnd = actualStart + 999; // Default 1000 line window for protection
-				}
-
-				// Normalize bounds
 				const totalLines = lines.length;
-				const startIdx = Math.max(1, actualStart) - 1;
-				const endIdx =
-					Math.min(totalLines, Math.max(actualStart, actualEnd)) - 1;
+				const startIdx = Math.max(1, offset) - 1;
 
-				const slice = lines.slice(startIdx, endIdx + 1);
+				let endIdx = startIdx + 999; // Default 1000 line window for protection
+				if (limit !== undefined) {
+					endIdx = startIdx + limit - 1;
+				}
+
+				const actualEndIdx = Math.min(totalLines - 1, endIdx);
+
+				const slice = lines.slice(startIdx, actualEndIdx + 1);
 				const slicedContent = slice.join("\n");
 
 				let paginationMessage = "";
-				if (endIdx + 1 < totalLines) {
-					paginationMessage = `\n\n--- [TRUNCATED: File continues. Displayed lines ${startIdx + 1}-${endIdx + 1} of ${totalLines} total lines. Use parameters 'startLine' or 'offset' and 'limit' to read next pages.] ---`;
+				if (actualEndIdx + 1 < totalLines) {
+					paginationMessage = `\n\n--- [TRUNCATED: File continues. Displayed lines ${startIdx + 1}-${actualEndIdx + 1} of ${totalLines} total lines. Use parameters 'offset' and 'limit' to read next pages.] ---`;
 				}
 
 				return slicedContent + paginationMessage;

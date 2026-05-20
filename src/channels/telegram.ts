@@ -5,7 +5,7 @@ import { SessionHistory } from "@/agent/history";
 import type { AgentLoop } from "@/agent/loop";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
-import { getAppDir, getMediaDir } from "@/config/paths";
+import { getAppDir, getMediaDir, getWorkspaceDir } from "@/config/paths";
 import { logger } from "@/utils/logger";
 import { Channel, type ChannelConfig } from "./base";
 
@@ -158,8 +158,10 @@ export class TelegramChannel extends Channel {
 							throw new Error(`Failed to fetch file: ${response.statusText}`);
 						}
 						const buffer = await response.arrayBuffer();
-						const mediaDir = getMediaDir();
-						const destPath = path.join(mediaDir, fileName);
+						const targetDir = this.agentLoop
+							? getWorkspaceDir(this.agentLoop.config.workspace_dir)
+							: getMediaDir();
+						const destPath = path.join(targetDir, fileName);
 						await fs.promises.writeFile(destPath, Buffer.from(buffer));
 
 						const username =
@@ -191,7 +193,9 @@ export class TelegramChannel extends Channel {
 									file_size: doc.file_size,
 									mime_type: doc.mime_type,
 									file_path: path.join(
-										getMediaDir(),
+										this.agentLoop
+											? getWorkspaceDir(this.agentLoop.config.workspace_dir)
+											: getMediaDir(),
 										doc.file_name ?? "document",
 									),
 								}
@@ -380,7 +384,11 @@ export class TelegramChannel extends Channel {
 		}
 
 		if (delta) {
-			buf.text += delta;
+			if (metadata._overwrite === true) {
+				buf.text = delta;
+			} else {
+				buf.text += delta;
+			}
 			await this.saveStreamsToDisk();
 		}
 
