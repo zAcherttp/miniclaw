@@ -97,9 +97,6 @@ This document lists the features intentionally implemented in the `miniclaw` ass
 * **+ [TBD] consolidation: Auto-Consolidation & Daily Summaries**
   + A background service that runs at the end of the day to summarize chat sessions.
   + Writes consolidated insights into a long-term memory file (e.g., `consolidation.md`) to keep history tokens optimal while preserving context.
-* **+ [TBD] dashboard: Local Admin Dashboard**
-  + A local React (shadcn/Vite) dashboard to view active sessions, configure model settings, and edit prompt guidelines.
-  + Hono API endpoints to securely control, start, stop, and monitor the bot's health.
 * **+ [TBD] memory: Dynamic Vector Memory Storage**
   + Move away from flat history lists to a vector-backed semantic memory storage.
   + Enables the agent to query historical facts and user preferences dynamically across sessions.
