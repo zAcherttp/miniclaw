@@ -120,7 +120,9 @@ export class TelegramChannel extends Channel {
 
 					const replyText = `✨ *Miniclaw Bot Status*\n\n🤖 *Active Model:* \`${activeModel}\`\n💬 *Active Message Count:* \`${messages.length}\`\n⚡ *Task Status:* \`${isActive ? "ACTIVE ⚡" : "IDLE 💤"}\`\n📁 *Workspace:* \`${workspace}\``;
 
-					await ctx.reply(replyText, { parse_mode: "Markdown" });
+					await ctx.reply(toMarkdownV2(replyText), {
+						parse_mode: "MarkdownV2",
+					});
 					return;
 				}
 
@@ -341,9 +343,15 @@ export class TelegramChannel extends Channel {
 
 	async send(msg: OutboundMessage): Promise<void> {
 		const reply = this.toReplyParameters(msg.reply_to);
-		await this.bot.api.sendMessage(this.parseChatId(msg.chat_id), msg.content, {
-			reply_parameters: reply,
-		});
+		const formattedText = toMarkdownV2(msg.content);
+		await this.bot.api.sendMessage(
+			this.parseChatId(msg.chat_id),
+			formattedText,
+			{
+				parse_mode: "MarkdownV2",
+				reply_parameters: reply,
+			},
+		);
 	}
 
 	async sendDelta(
@@ -511,4 +519,165 @@ export class TelegramChannel extends Channel {
 		}
 		return "stream";
 	}
+}
+
+export function toMarkdownV2(text: string): string {
+	let result = "";
+	let i = 0;
+
+	// Escape function for regular text
+	const escapeText = (str: string) => {
+		return str.replace(/[_*[\]()~`>#+\-=|{}.!]/g, "\\$&");
+	};
+
+	const escapePreCode = (str: string) => {
+		return str.replace(/[`\\]/g, "\\$&");
+	};
+
+	const escapeInlineCode = (str: string) => {
+		return str.replace(/[`\\]/g, "\\$&");
+	};
+
+	const escapeUrl = (str: string) => {
+		return str.replace(/[)\\]/g, "\\$&");
+	};
+
+	while (i < text.length) {
+		// 1. Code blocks (```)
+		if (text.startsWith("```", i)) {
+			const end = text.indexOf("```", i + 3);
+			if (end !== -1) {
+				const block = text.substring(i + 3, end);
+				const newlineIdx = block.indexOf("\n");
+				let lang = "";
+				let code = block;
+				if (newlineIdx !== -1 && newlineIdx < 15) {
+					lang = block.substring(0, newlineIdx).trim();
+					code = block.substring(newlineIdx + 1);
+				}
+				result += "```" + lang + "\n" + escapePreCode(code) + "```";
+				i = end + 3;
+				continue;
+			}
+		}
+
+		// 2. Inline code (`)
+		if (text.startsWith("`", i)) {
+			const end = text.indexOf("`", i + 1);
+			if (end !== -1) {
+				const code = text.substring(i + 1, end);
+				result += "`" + escapeInlineCode(code) + "`";
+				i = end + 1;
+				continue;
+			}
+		}
+
+		// 3. Bold (**bold**)
+		if (text.startsWith("**", i)) {
+			const end = text.indexOf("**", i + 2);
+			if (end !== -1) {
+				const boldContent = text.substring(i + 2, end);
+				// Bold in MarkdownV2 is single *
+				result += "*" + toMarkdownV2(boldContent) + "*";
+				i = end + 2;
+				continue;
+			}
+		}
+
+		// 4. Bold / Underline (__bold__ or __underline__)
+		if (text.startsWith("__", i)) {
+			const end = text.indexOf("__", i + 2);
+			if (end !== -1) {
+				const content = text.substring(i + 2, end);
+				result += "__" + toMarkdownV2(content) + "__";
+				i = end + 2;
+				continue;
+			}
+		}
+
+		// 5. Italic (*italic*)
+		const isStartOfLine = i === 0 || text[i - 1] === "\n";
+		if (text.startsWith("* ", i) && isStartOfLine) {
+			result += "\\* ";
+			i += 2;
+			continue;
+		}
+
+		if (text.startsWith("*", i)) {
+			const end = text.indexOf("*", i + 1);
+			if (end !== -1) {
+				const italicContent = text.substring(i + 1, end);
+				// Italic in MarkdownV2 is single _
+				result += "_" + toMarkdownV2(italicContent) + "_";
+				i = end + 1;
+				continue;
+			}
+		}
+
+		// 6. Italic (_italic_)
+		if (text.startsWith("_", i)) {
+			const end = text.indexOf("_", i + 1);
+			if (end !== -1) {
+				const italicContent = text.substring(i + 1, end);
+				result += "_" + toMarkdownV2(italicContent) + "_";
+				i = end + 1;
+				continue;
+			}
+		}
+
+		// 7. Strikethrough (~strikethrough~)
+		if (text.startsWith("~", i)) {
+			const end = text.indexOf("~", i + 1);
+			if (end !== -1) {
+				const strikethroughContent = text.substring(i + 1, end);
+				result += "~" + toMarkdownV2(strikethroughContent) + "~";
+				i = end + 1;
+				continue;
+			}
+		}
+
+		// 8. Link [label](url)
+		if (text.startsWith("[", i)) {
+			const closeBracket = text.indexOf("]", i + 1);
+			if (closeBracket !== -1 && text.startsWith("(", closeBracket + 1)) {
+				const closeParen = text.indexOf(")", closeBracket + 2);
+				if (closeParen !== -1) {
+					const label = text.substring(i + 1, closeBracket);
+					const url = text.substring(closeBracket + 2, closeParen);
+					result += "[" + toMarkdownV2(label) + "](" + escapeUrl(url) + ")";
+					i = closeParen + 1;
+					continue;
+				}
+			}
+		}
+
+		// 9. Standard list item marker (- )
+		if (text.startsWith("- ", i) && isStartOfLine) {
+			result += "\\- ";
+			i += 2;
+			continue;
+		}
+
+		// 10. Standard list item marker (+ )
+		if (text.startsWith("+ ", i) && isStartOfLine) {
+			result += "\\+ ";
+			i += 2;
+			continue;
+		}
+
+		// 11. Numeric list item marker (e.g. 1. )
+		const numericListMatch = text.substring(i).match(/^(\d+)\.\s/);
+		if (numericListMatch && isStartOfLine) {
+			const numStr = numericListMatch[1];
+			result += `${numStr}\\. `;
+			i += numStr.length + 2;
+			continue;
+		}
+
+		// 12. Normal character
+		result += escapeText(text[i]);
+		i++;
+	}
+
+	return result;
 }

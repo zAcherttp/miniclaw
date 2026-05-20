@@ -268,12 +268,10 @@ export class AgentLoop {
 										channel: msg.channel,
 										chat_id: msg.chat_id,
 										content: hintText,
-										reply_to: replyTo,
 										metadata: {
 											_stream_id: `tools-${streamId}`,
 											_stream_delta: true,
 											_overwrite: true,
-											reply_to: replyTo,
 										},
 									});
 
@@ -471,12 +469,10 @@ export class AgentLoop {
 									channel: msg.channel,
 									chat_id: msg.chat_id,
 									content: hintText,
-									reply_to: replyTo,
 									metadata: {
 										_stream_id: `tools-${streamId}`,
 										_stream_delta: true,
 										_overwrite: true,
-										reply_to: replyTo,
 									},
 								});
 
@@ -553,11 +549,9 @@ export class AgentLoop {
 						channel: msg.channel,
 						chat_id: msg.chat_id,
 						content: "",
-						reply_to: replyTo,
 						metadata: {
 							_stream_id: `tools-${streamId}`,
 							_stream_end: true,
-							reply_to: replyTo,
 						},
 					});
 
@@ -593,11 +587,9 @@ export class AgentLoop {
 								channel: msg.channel,
 								chat_id: msg.chat_id,
 								content: "",
-								reply_to: replyTo,
 								metadata: {
 									_stream_id: `tools-${streamId}`,
 									_stream_end: true,
-									reply_to: replyTo,
 								},
 							});
 						} catch {}

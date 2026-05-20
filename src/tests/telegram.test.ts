@@ -9,7 +9,7 @@ import type {
 	ChannelBlockedAttemptEvent,
 	ChannelInboundEvent,
 } from "@/channels/base";
-import { TelegramChannel } from "@/channels/telegram";
+import { TelegramChannel, toMarkdownV2 } from "@/channels/telegram";
 import { getAppDir, getMediaDir } from "@/config/paths";
 
 // Redirect homedir to a sandbox temp folder for this test
@@ -261,7 +261,9 @@ describe("Telegram Channel Integration & Recovery", () => {
 		// Verify final sendMessage call
 		expect(apiCalls.some((c) => c.method === "sendMessage")).toBe(true);
 		const sendCall = apiCalls.find((c) => c.method === "sendMessage");
-		expect(sendCall?.payload.text).toBe("My first delta with an ending.");
+		expect(sendCall?.payload.text).toBe(
+			toMarkdownV2("My first delta with an ending."),
+		);
 
 		// Verify stream buffer is cleared from disk
 		const streamsAfter = JSON.parse(fs.readFileSync(streamFilePath, "utf-8"));
@@ -321,7 +323,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 		const sendCall = apiCalls.find((c) => c.method === "sendMessage");
 		expect(sendCall?.payload.chat_id).toBe(98765);
 		expect(sendCall?.payload.text).toBe(
-			"This stream was in progress when the app crashed.",
+			toMarkdownV2("This stream was in progress when the app crashed."),
 		);
 		expect(sendCall?.payload.reply_parameters).toEqual({ message_id: 42 });
 
@@ -598,6 +600,53 @@ describe("Telegram Channel Integration & Recovery", () => {
 			);
 
 			await channel.stop();
+		});
+	});
+
+	describe("toMarkdownV2 Parser", () => {
+		it("should escape special characters in plain text", () => {
+			expect(toMarkdownV2("Hello. World!")).toBe("Hello\\. World\\!");
+			expect(toMarkdownV2("Task [1]: done.")).toBe("Task \\[1\\]: done\\.");
+		});
+
+		it("should convert bold markdown from double stars to single stars", () => {
+			expect(toMarkdownV2("This is **bold** text")).toBe("This is *bold* text");
+		});
+
+		it("should convert italic markdown to single underscore", () => {
+			expect(toMarkdownV2("This is *italic* and _italic_ text")).toBe(
+				"This is _italic_ and _italic_ text",
+			);
+		});
+
+		it("should handle nested bold and italic tags", () => {
+			expect(toMarkdownV2("This is **bold and *italic* nested**")).toBe(
+				"This is *bold and _italic_ nested*",
+			);
+		});
+
+		it("should preserve code blocks but escape backslashes and backticks inside them", () => {
+			const input = "```js\nconst x = `hello \\ world`;\n```";
+			const expected = "```js\nconst x = \\`hello \\\\ world\\`;\n```";
+			expect(toMarkdownV2(input)).toBe(expected);
+		});
+
+		it("should preserve inline code but escape backslashes and backticks inside them", () => {
+			expect(toMarkdownV2("Use `x \\ y` code")).toBe("Use `x \\\\ y` code");
+		});
+
+		it("should convert markdown links and format labels recursively", () => {
+			expect(toMarkdownV2("[Click *here*!](http://example.com/foo)")).toBe(
+				"[Click _here_\\!](http://example.com/foo)",
+			);
+		});
+
+		it("should escape list markers and avoid parsing list bullets as bold/italic", () => {
+			expect(toMarkdownV2("* item 1\n* item 2")).toBe("\\* item 1\n\\* item 2");
+			expect(toMarkdownV2("- item 1\n- item 2")).toBe("\\- item 1\n\\- item 2");
+			expect(toMarkdownV2("1. item 1\n2. item 2")).toBe(
+				"1\\. item 1\n2\\. item 2",
+			);
 		});
 	});
 });
