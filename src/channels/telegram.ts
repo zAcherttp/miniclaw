@@ -158,9 +158,11 @@ export class TelegramChannel extends Channel {
 							throw new Error(`Failed to fetch file: ${response.statusText}`);
 						}
 						const buffer = await response.arrayBuffer();
-						const targetDir = this.agentLoop
-							? getWorkspaceDir(this.agentLoop.config.workspace_dir)
-							: getMediaDir();
+						const targetDir = getMediaDir(
+							this.agentLoop
+								? getWorkspaceDir(this.agentLoop.config.workspace_dir)
+								: undefined,
+						);
 						const destPath = path.join(targetDir, fileName);
 						await fs.promises.writeFile(destPath, Buffer.from(buffer));
 
@@ -193,9 +195,11 @@ export class TelegramChannel extends Channel {
 									file_size: doc.file_size,
 									mime_type: doc.mime_type,
 									file_path: path.join(
-										this.agentLoop
-											? getWorkspaceDir(this.agentLoop.config.workspace_dir)
-											: getMediaDir(),
+										getMediaDir(
+											this.agentLoop
+												? getWorkspaceDir(this.agentLoop.config.workspace_dir)
+												: undefined,
+										),
 										doc.file_name ?? "document",
 									),
 								}

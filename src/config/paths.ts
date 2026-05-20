@@ -30,8 +30,9 @@ export function getWorkspaceDir(customPath?: string): string {
 	return wsPath;
 }
 
-export function getMediaDir(): string {
-	const dir = path.join(getAppDir(), "media");
+export function getMediaDir(workspaceDir?: string): string {
+	const baseDir = workspaceDir || getWorkspaceDir();
+	const dir = path.join(baseDir, "media");
 	if (!fs.existsSync(dir))
 		fs.mkdirSync(dir, {
 			recursive: true,
