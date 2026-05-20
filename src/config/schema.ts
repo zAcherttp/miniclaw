@@ -5,6 +5,7 @@ export const AgentConfigSchema = z.object({
 	system_prompt: z.string().optional(),
 	max_iterations: z.number().default(15),
 	temperature: z.number().default(0.7),
+	reasoning_effort: z.string().optional(),
 });
 
 const AllowFromSchema = z

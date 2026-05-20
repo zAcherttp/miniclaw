@@ -1,3 +1,4 @@
+import type { AgentLoop } from "@/agent/loop";
 import type { OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
@@ -17,11 +18,13 @@ export class ChannelManager {
 	private readonly bus: MessageBus;
 	private readonly channels = new Map<string, Channel>();
 	private readonly outboundLogBufs = new Map<string, string>();
+	private readonly agentLoop?: AgentLoop;
 	private dispatchTask?: Promise<void>;
 	private running = false;
 
-	constructor(config: AppConfig, bus: MessageBus) {
+	constructor(config: AppConfig, bus: MessageBus, agentLoop?: AgentLoop) {
 		this.bus = bus;
+		this.agentLoop = agentLoop;
 		this.initChannels(config);
 	}
 
@@ -77,7 +80,12 @@ export class ChannelManager {
 			return;
 		}
 
-		const channel = new TelegramChannel(this.bus, token, telegramConfig);
+		const channel = new TelegramChannel(
+			this.bus,
+			token,
+			telegramConfig,
+			this.agentLoop,
+		);
 		channel.onInboundMessage = (event) => {
 			logger.info(`[Channels] Inbound message received from ${event.channel}`);
 			this.logInbound(event);

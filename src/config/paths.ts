@@ -29,3 +29,12 @@ export function getWorkspaceDir(customPath?: string): string {
 		});
 	return wsPath;
 }
+
+export function getMediaDir(): string {
+	const dir = path.join(getAppDir(), "media");
+	if (!fs.existsSync(dir))
+		fs.mkdirSync(dir, {
+			recursive: true,
+		});
+	return dir;
+}

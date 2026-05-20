@@ -1,20 +1,158 @@
+import {
+	type AIMessageChunk,
+	type BaseMessage,
+	HumanMessage,
+	SystemMessage,
+	ToolMessage,
+} from "@langchain/core/messages";
+import type { StructuredTool } from "@langchain/core/tools";
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
+import { getWorkspaceDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
+import { ContextEngineeringManager, SessionHistory } from "./history";
+import { createChatModel } from "./models";
+import { createFilesystemTools } from "./tools/filesystem";
+import { createWriteTodosTool } from "./tools/todos";
 
 const INBOUND_BATCH_MAX_CONTENT_LENGTH = 1200;
 const INBOUND_BATCH_DEBOUNCE_MS = 250;
 
+const DEFAULT_SYSTEM_PROMPT = `You are Miniclaw, an autonomous, highly secure personal assistant.
+Your goal is to solve the user's request systematically, safely, and efficiently.
+
+### OPERATIONAL PRINCIPLES:
+1. **Analyze First**: Always start by listing files (\`list_files\`) or searching (\`grep_search\`) to understand the current workspace state.
+2. **Decompose & Plan**: Before writing code or making modifications, use the \`write_todos\` tool to create a clear, step-by-step checklist of your plan.
+3. **Solve by Doing**: Do not just describe what you would do. Execute the plan step-by-step, updating your task checklist as you complete items.
+4. **Reflect & Verify**: After each step, verify the outcome and adjust your plan if unexpected issues arise.
+
+### SECURITY & SANDBOXING CONSTRAINTS:
+- **Sandbox Boundary**: You are strictly sandboxed to the active workspace directory. You cannot access, read, or write any files outside this folder.
+- **No Directory Traversal**: Any attempt to use \`../\`, absolute paths, or symlinks to escape the workspace directory will trigger a security violation.
+- **Safe Commands**: All file and search actions are handled through secure, sandboxed utility APIs. Do not attempt to run arbitrary terminal commands.`;
+
+/**
+ * Remove thinking blocks, unclosed trailing tags, and templates from text.
+ */
+export function stripThink(text: string): string {
+	let t = text;
+	t = t.replace(/<think>[\s\S]*?<\/think>/g, "");
+	t = t.replace(/^\s*<think>[\s\S]*$/, "");
+	t = t.replace(/<thought>[\s\S]*?<\/thought>/g, "");
+	t = t.replace(/^\s*<thought>[\s\S]*$/, "");
+
+	t = t.replace(/<think(?![A-Za-z0-9_\-:>/])/g, "");
+	t = t.replace(/<thought(?![A-Za-z0-9_\-:>/])/g, "");
+
+	t = t.replace(/^\s*<\/think>\s*/g, "");
+	t = t.replace(/\s*<\/think>\s*$/g, "");
+	t = t.replace(/^\s*<\/thought>\s*/g, "");
+	t = t.replace(/\s*<\/thought>\s*$/g, "");
+
+	t = t.replace(/^\s*<\|?channel\|?>\s*/g, "");
+
+	const partialControlTag =
+		/<\/?(?:t|th|thi|thin|think|tho|thou|thoug|though|thought)>?$|<\|?(?:c|ch|cha|chan|chann|channe|channel)(?:\|?>?)?$/;
+	t = t.replace(partialControlTag, "");
+	t = t.replace(/^\s*<\|?$/g, "");
+
+	return t.trim();
+}
+
+/**
+ * Extract thinking content from inline `<think>` / `<thought>` blocks.
+ */
+export function extractThink(text: string): [string | null, string] {
+	const parts: string[] = [];
+	const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
+	for (const match of text.matchAll(thinkRegex)) {
+		parts.push(match[1].trim());
+	}
+	const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/g;
+	for (const match of text.matchAll(thoughtRegex)) {
+		parts.push(match[1].trim());
+	}
+	const thinking = parts.length > 0 ? parts.join("\n\n") : null;
+	return [thinking, stripThink(text)];
+}
+
+/**
+ * Stateful inline `<think>` extractor for streaming buffers.
+ */
+export class IncrementalThinkExtractor {
+	public emitted = "";
+
+	reset(): void {
+		this.emitted = "";
+	}
+
+	async feed(
+		buf: string,
+		emit: (text: string) => Promise<void>,
+	): Promise<boolean> {
+		const [thinking] = extractThink(buf);
+		if (!thinking || thinking === this.emitted) {
+			return false;
+		}
+		const newThink = thinking.substring(this.emitted.length).trim();
+		this.emitted = thinking;
+		if (!newThink) {
+			return false;
+		}
+		await emit(newThink);
+		return true;
+	}
+}
+
+/**
+ * Formats tool calls as a human-readable hint string.
+ */
+function formatToolHints(
+	toolCalls: { name: string; args?: Record<string, unknown>; id?: string }[],
+): string {
+	const hints = toolCalls.map((tc) => {
+		const args = tc.args || {};
+		const argVal = Object.values(args)[0] || "";
+		const displayArg =
+			typeof argVal === "string"
+				? argVal.length > 30
+					? `${argVal.substring(0, 27)}...`
+					: argVal
+				: JSON.stringify(argVal);
+		return `${tc.name}(${displayArg})`;
+	});
+	return `Calling ${hints.join(", ")}`;
+}
+
 export class AgentLoop {
-	private config: AppConfig;
+	public readonly config: AppConfig;
 	private bus: MessageBus;
 	public running: boolean = false;
 	private inboundTask?: Promise<void>;
+	private activeExecutions = new Map<
+		string,
+		{ abortController: AbortController }
+	>();
 
 	constructor(config: AppConfig, bus: MessageBus) {
 		this.config = config;
 		this.bus = bus;
+	}
+
+	async cancelChat(chatId: string): Promise<boolean> {
+		const active = this.activeExecutions.get(chatId);
+		if (active) {
+			active.abortController.abort();
+			this.activeExecutions.delete(chatId);
+			return true;
+		}
+		return false;
+	}
+
+	isChatActive(chatId: string): boolean {
+		return this.activeExecutions.has(chatId);
 	}
 
 	async start() {
@@ -53,54 +191,365 @@ export class AgentLoop {
 				const msg = this.coalesceInbound(batch);
 				const batchTag = batch.length > 1 ? ` [batched x${batch.length}]` : "";
 				logger.info(
-					"[AgentLoop] Received from " +
-						msg.channel +
-						" (" +
-						msg.chat_id +
-						"): " +
-						msg.content +
-						batchTag,
+					`[AgentLoop] Received from ${msg.channel} (${msg.chat_id}): ${msg.content}${batchTag}`,
 				);
 
-				// TODO: Handle langchain execution here
-				const responseText = `Echo from JS: ${msg.content}`;
-				const messageId = msg.metadata?.message_id;
-				const replyTo =
-					typeof messageId === "string"
-						? messageId
-						: typeof messageId === "number"
-							? messageId.toString()
-							: undefined;
+				const controller = new AbortController();
+				this.activeExecutions.set(msg.chat_id, { abortController: controller });
 
-				const streamId = `echo-${Date.now()}`;
-				const words = responseText.split(" ");
-				for (let i = 0; i < words.length; i++) {
-					const word = words[i] + (i < words.length - 1 ? " " : "");
+				const workspaceDir = getWorkspaceDir(this.config.workspace_dir);
+				const history = new SessionHistory(msg.chat_id);
+				const pastMessages = await history.loadHistory(40);
+
+				// Persist user message in history
+				await history.appendMessage("user", msg.content);
+
+				const memoryGuidelines =
+					await ContextEngineeringManager.loadMemoryFiles(workspaceDir);
+				const systemPrompt =
+					(this.config.agent.system_prompt || DEFAULT_SYSTEM_PROMPT) +
+					memoryGuidelines;
+
+				const activeMessages: BaseMessage[] = [
+					new SystemMessage(systemPrompt),
+					...pastMessages,
+					new HumanMessage(msg.content),
+				];
+
+				const fsTools = createFilesystemTools(workspaceDir);
+				const todoTool = createWriteTodosTool(workspaceDir);
+				const tools = [...fsTools, todoTool];
+				const toolsByName = new Map<string, StructuredTool>(
+					tools.map((t) => [t.name, t]),
+				);
+
+				const model = await createChatModel(this.config);
+				const modelWithTools = model.bindTools(tools);
+
+				const replyTo = msg.metadata?.message_id?.toString();
+				const streamId = `agent-${Date.now()}`;
+
+				let assistantFinalResponse = "";
+				let currentIteration = 0;
+				const maxIterations = this.config.agent.max_iterations ?? 15;
+
+				try {
+					while (
+						currentIteration < maxIterations &&
+						this.running &&
+						!controller.signal.aborted
+					) {
+						currentIteration++;
+						logger.info(
+							`[AgentLoop] Starting iteration ${currentIteration}/${maxIterations}`,
+						);
+
+						if (controller.signal.aborted) {
+							break;
+						}
+
+						let stream: AsyncIterable<AIMessageChunk>;
+						try {
+							stream = await modelWithTools.stream(activeMessages, {
+								signal: controller.signal,
+							});
+						} catch (e) {
+							if (controller.signal.aborted) {
+								break;
+							}
+							logger.error(e, "[AgentLoop] Failed to initialize model stream");
+							// Fallback to non-streaming invoke
+							try {
+								const response = await modelWithTools.invoke(activeMessages, {
+									signal: controller.signal,
+								});
+								if (controller.signal.aborted) {
+									break;
+								}
+								activeMessages.push(response);
+								assistantFinalResponse =
+									typeof response.content === "string"
+										? stripThink(response.content)
+										: "";
+
+								const toolCalls = response.tool_calls || [];
+								if (toolCalls.length > 0) {
+									const hintText = `\n\n⚙️ *${formatToolHints(toolCalls)}*...\n`;
+									await this.bus.publishOutbound({
+										channel: msg.channel,
+										chat_id: msg.chat_id,
+										content: hintText,
+										reply_to: replyTo,
+										metadata: {
+											_stream_id: streamId,
+											_stream_delta: true,
+											reply_to: replyTo,
+										},
+									});
+
+									for (const tc of toolCalls) {
+										if (controller.signal.aborted) {
+											break;
+										}
+										const tool = toolsByName.get(tc.name);
+										let result: string;
+										if (!tool) {
+											result = `Error: Tool ${tc.name} is not available.`;
+										} else {
+											try {
+												result = await tool.invoke(tc.args);
+											} catch (err) {
+												const errorMsg =
+													err instanceof Error ? err.message : String(err);
+												result = `Error executing tool ${tc.name}: ${errorMsg}`;
+											}
+										}
+										activeMessages.push(
+											new ToolMessage({
+												content: result,
+												tool_call_id: tc.id ?? "",
+												name: tc.name,
+											}),
+										);
+									}
+									continue; // continue to next iteration
+								}
+								break; // final response
+							} catch (invokeError) {
+								if (controller.signal.aborted) {
+									break;
+								}
+								logger.error(
+									invokeError,
+									"[AgentLoop] Fallback invoke also failed",
+								);
+								break;
+							}
+						}
+
+						let accumulatedMessage: AIMessageChunk | null = null;
+						let streamBuf = "";
+						let hasReasoned = false;
+						let reasoningClosed = false;
+						let prevClean = "";
+						const thinkExtractor = new IncrementalThinkExtractor();
+
+						for await (const chunk of stream) {
+							if (!this.running || controller.signal.aborted) {
+								assistantFinalResponse = stripThink(streamBuf);
+								break;
+							}
+
+							if (accumulatedMessage === null) {
+								accumulatedMessage = chunk;
+							} else {
+								accumulatedMessage = accumulatedMessage.concat(chunk);
+							}
+
+							// 1. Dedicated reasoning content (if supported by the provider)
+							const rDelta = chunk.additional_kwargs?.reasoning_content as
+								| string
+								| undefined;
+							if (rDelta) {
+								hasReasoned = true;
+								await this.bus.publishOutbound({
+									channel: msg.channel,
+									chat_id: msg.chat_id,
+									content: rDelta,
+									reply_to: replyTo,
+									metadata: {
+										_stream_id: streamId,
+										_reasoning_delta: true,
+										reply_to: replyTo,
+									},
+								});
+							}
+
+							// 2. Inline think tags in content
+							const chunkText =
+								typeof chunk.content === "string" ? chunk.content : "";
+							if (chunkText) {
+								streamBuf += chunkText;
+
+								// Check for incremental thinking
+								const [thinkingText] = extractThink(streamBuf);
+								if (thinkingText) {
+									hasReasoned = true;
+									const newThink = thinkingText.substring(
+										thinkExtractor.emitted.length,
+									);
+									if (newThink) {
+										thinkExtractor.emitted = thinkingText;
+										await this.bus.publishOutbound({
+											channel: msg.channel,
+											chat_id: msg.chat_id,
+											content: newThink,
+											reply_to: replyTo,
+											metadata: {
+												_stream_id: streamId,
+												_reasoning_delta: true,
+												reply_to: replyTo,
+											},
+										});
+									}
+								}
+
+								// Check for incremental clean content
+								const newClean = stripThink(streamBuf);
+								const incremental = newClean.substring(prevClean.length);
+								if (incremental) {
+									if (hasReasoned && !reasoningClosed) {
+										await this.bus.publishOutbound({
+											channel: msg.channel,
+											chat_id: msg.chat_id,
+											content: "",
+											reply_to: replyTo,
+											metadata: {
+												_stream_id: streamId,
+												_reasoning_end: true,
+												reply_to: replyTo,
+											},
+										});
+										reasoningClosed = true;
+									}
+									prevClean = newClean;
+									await this.bus.publishOutbound({
+										channel: msg.channel,
+										chat_id: msg.chat_id,
+										content: incremental,
+										reply_to: replyTo,
+										metadata: {
+											_stream_id: streamId,
+											_stream_delta: true,
+											reply_to: replyTo,
+										},
+									});
+								}
+							}
+							assistantFinalResponse = stripThink(streamBuf);
+						}
+
+						if (controller.signal.aborted) {
+							break;
+						}
+
+						if (hasReasoned && !reasoningClosed) {
+							await this.bus.publishOutbound({
+								channel: msg.channel,
+								chat_id: msg.chat_id,
+								content: "",
+								reply_to: replyTo,
+								metadata: {
+									_stream_id: streamId,
+									_reasoning_end: true,
+									reply_to: replyTo,
+								},
+							});
+							reasoningClosed = true;
+						}
+
+						if (accumulatedMessage) {
+							activeMessages.push(accumulatedMessage);
+							assistantFinalResponse = stripThink(streamBuf);
+
+							const toolCalls = accumulatedMessage.tool_calls || [];
+							if (toolCalls.length > 0) {
+								const hintText = `\n\n⚙️ *${formatToolHints(toolCalls)}*...\n`;
+								await this.bus.publishOutbound({
+									channel: msg.channel,
+									chat_id: msg.chat_id,
+									content: hintText,
+									reply_to: replyTo,
+									metadata: {
+										_stream_id: streamId,
+										_stream_delta: true,
+										reply_to: replyTo,
+									},
+								});
+
+								for (const tc of toolCalls) {
+									if (controller.signal.aborted) {
+										break;
+									}
+									const tool = toolsByName.get(tc.name);
+									let result: string;
+									if (!tool) {
+										result = `Error: Tool ${tc.name} is not available.`;
+									} else {
+										try {
+											result = await tool.invoke(tc.args);
+										} catch (err) {
+											const errorMsg =
+												err instanceof Error ? err.message : String(err);
+											result = `Error executing tool ${tc.name}: ${errorMsg}`;
+										}
+									}
+									activeMessages.push(
+										new ToolMessage({
+											content: result,
+											tool_call_id: tc.id ?? "",
+											name: tc.name,
+										}),
+									);
+								}
+							} else {
+								break; // Final response reached, no tool calls
+							}
+						} else {
+							break;
+						}
+					}
+
+					// Finalize stream
 					await this.bus.publishOutbound({
 						channel: msg.channel,
 						chat_id: msg.chat_id,
-						content: word,
+						content: "",
 						reply_to: replyTo,
 						metadata: {
 							_stream_id: streamId,
-							_stream_delta: true,
+							_stream_end: true,
 							reply_to: replyTo,
 						},
 					});
-					await new Promise((resolve) => setTimeout(resolve, 100));
-				}
 
-				await this.bus.publishOutbound({
-					channel: msg.channel,
-					chat_id: msg.chat_id,
-					content: "",
-					reply_to: replyTo,
-					metadata: {
-						_stream_id: streamId,
-						_stream_end: true,
-						reply_to: replyTo,
-					},
-				});
+					if (assistantFinalResponse) {
+						await history.appendMessage("assistant", assistantFinalResponse);
+					}
+				} catch (e) {
+					if (
+						controller.signal.aborted ||
+						(e as Error)?.name === "AbortError" ||
+						(e as Error)?.message?.includes("aborted")
+					) {
+						logger.info(
+							`[AgentLoop] Execution aborted for chat ${msg.chat_id}`,
+						);
+
+						// Finalize stream if it was aborted mid-stream
+						try {
+							await this.bus.publishOutbound({
+								channel: msg.channel,
+								chat_id: msg.chat_id,
+								content: "",
+								reply_to: replyTo,
+								metadata: {
+									_stream_id: streamId,
+									_stream_end: true,
+									reply_to: replyTo,
+								},
+							});
+						} catch {}
+
+						if (assistantFinalResponse) {
+							await history.appendMessage("assistant", assistantFinalResponse);
+						}
+					} else {
+						throw e;
+					}
+				} finally {
+					this.activeExecutions.delete(msg.chat_id);
+				}
 			} catch (e) {
 				if (this.running) {
 					logger.error(e, "[AgentLoop] Error processing inbound message");

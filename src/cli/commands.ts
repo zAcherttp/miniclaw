@@ -13,7 +13,7 @@ import { AppConfigSchema } from "@/config/schema";
 const program = new Command();
 program.name("miniclaw").description("Miniclaw - Personal AI Assistant");
 
-function runOnboarding() {
+export function runOnboarding() {
 	console.log(
 		chalk.bold.cyan("Initializing Miniclaw with default configuration..."),
 	);
@@ -132,10 +132,12 @@ program
 		console.log(JSON.stringify(config, null, 2));
 	});
 
-// Setup no-args equivalent to help
-if (!process.argv.slice(2).length) {
-	program.outputHelp();
-	process.exit(0);
-}
+if (!process.env.VITEST) {
+	// Setup no-args equivalent to help
+	if (!process.argv.slice(2).length) {
+		program.outputHelp();
+		process.exit(0);
+	}
 
-program.parse(process.argv);
+	program.parse(process.argv);
+}
