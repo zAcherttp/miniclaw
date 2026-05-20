@@ -57,24 +57,58 @@ describe("Secure Filesystem & Search Tools", () => {
 	describe("read_file with pagination", () => {
 		it("should read full file by default", async () => {
 			const res = await readFileTool.invoke({
-				path: "subfolder/test.txt",
+				file_path: "subfolder/test.txt",
 			});
-			expect(res).toBe("Line 1\nLine 2\nLine 3\nLine 4\nLine 5");
+			expect(res).toBe(
+				"     1  Line 1\n     2  Line 2\n     3  Line 3\n     4  Line 4\n     5  Line 5",
+			);
 		});
 
 		it("should slice by offset and limit", async () => {
 			const res = await readFileTool.invoke({
-				path: "subfolder/test.txt",
-				offset: 3, // starts at 1-indexed line 3 (Line 3)
+				file_path: "subfolder/test.txt",
+				offset: 2, // starts at 0-indexed line 2 (Line 3)
 				limit: 2,
 			});
-			expect(res).toContain("Line 3\nLine 4");
+			expect(res).toContain("     3  Line 3\n     4  Line 4");
 			expect(res).toContain("TRUNCATED");
+		});
+
+		it("should handle empty files gracefully", async () => {
+			await writeFileTool.invoke({
+				path: "empty.txt",
+				content: "",
+			});
+			const res = await readFileTool.invoke({
+				file_path: "empty.txt",
+			});
+			expect(res).toContain(
+				'System Reminder: The file at "empty.txt" exists but is empty.',
+			);
+		});
+
+		it("should split long lines (>5000 chars) with continuation markers", async () => {
+			const longLine = "A".repeat(12000);
+			await writeFileTool.invoke({
+				path: "long.txt",
+				content: longLine,
+			});
+			const res = await readFileTool.invoke({
+				file_path: "long.txt",
+			});
+			const lines = res.split("\n");
+			expect(lines).toHaveLength(3);
+			expect(lines[0]).toContain("   1.1  ");
+			expect(lines[1]).toContain("   1.2  ");
+			expect(lines[2]).toContain("   1.3  ");
+			expect(lines[0].trim().split(/\s+/)[1].length).toBe(5000);
+			expect(lines[1].trim().split(/\s+/)[1].length).toBe(5000);
+			expect(lines[2].trim().split(/\s+/)[1].length).toBe(2000);
 		});
 
 		it("should reject path traversal gracefully", async () => {
 			const res = await readFileTool.invoke({
-				path: "../../tsconfig.json",
+				file_path: "../../tsconfig.json",
 			});
 			expect(res).toContain("Security Violation");
 		});

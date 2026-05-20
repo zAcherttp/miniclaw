@@ -76,40 +76,80 @@ export const createFilesystemTools = (workspaceDir: string) => {
 	const readFileTool = new DynamicStructuredTool({
 		name: "read_file",
 		description:
-			"Reads a text file's contents relative to the workspace. Supports offset (1-indexed start line) and limit (number of lines to read) for pagination to keep prompt token counts optimal.",
+			"Reads a file from the filesystem. Supports pagination with offset (0-indexed line number to start reading from) and limit parameters to avoid context overflow. Only omit limit (read full file) when necessary for editing. Results are returned using cat -n format with line numbers starting at 1. Lines longer than 5,000 characters are split into multiple lines with continuation markers.",
 		schema: z.object({
-			path: z
+			file_path: z
 				.string()
-				.describe("The file path to read (relative to the workspace)"),
+				.describe(
+					"Absolute path to the file to read. Must be absolute, not relative.",
+				),
 			offset: z
 				.number()
 				.optional()
-				.default(1)
-				.describe("The starting line number to read (1-indexed, inclusive)"),
-			limit: z.number().optional().describe("Maximum number of lines to read"),
+				.default(0)
+				.describe(
+					"Line number to start reading from (0-indexed). Use for pagination of large files.",
+				),
+			limit: z
+				.number()
+				.optional()
+				.describe(
+					"Maximum number of lines to read. Use for pagination of large files. Default is 100 when doing exploration.",
+				),
 		}),
-		func: async ({ path: filePath, offset, limit }) => {
+		func: async ({ file_path: filePath, offset, limit }) => {
 			try {
 				const securePath = resolveSecurePath(workspaceDir, filePath);
 				const content = await fs.readFile(securePath, "utf-8");
-				const lines = content.split(/\r?\n/);
 
-				const totalLines = lines.length;
-				const startIdx = Math.max(1, offset) - 1;
-
-				let endIdx = startIdx + 999; // Default 1000 line window for protection
-				if (limit !== undefined) {
-					endIdx = startIdx + limit - 1;
+				if (content.length === 0) {
+					return `System Reminder: The file at "${filePath}" exists but is empty.`;
 				}
 
-				const actualEndIdx = Math.min(totalLines - 1, endIdx);
+				const originalLines = content.split(/\r?\n/);
+				const outputLines: Array<{ lineNumStr: string; text: string }> = [];
 
-				const slice = lines.slice(startIdx, actualEndIdx + 1);
-				const slicedContent = slice.join("\n");
+				for (let i = 0; i < originalLines.length; i++) {
+					const lineNum = i + 1;
+					const lineText = originalLines[i];
+
+					if (lineText.length <= 5000) {
+						outputLines.push({
+							lineNumStr: String(lineNum),
+							text: lineText,
+						});
+					} else {
+						let chunkIdx = 1;
+						for (let charIdx = 0; charIdx < lineText.length; charIdx += 5000) {
+							const chunk = lineText.substring(charIdx, charIdx + 5000);
+							outputLines.push({
+								lineNumStr: `${lineNum}.${chunkIdx}`,
+								text: chunk,
+							});
+							chunkIdx++;
+						}
+					}
+				}
+
+				const totalOutputLines = outputLines.length;
+				const startIdx = Math.max(0, offset);
+
+				let endIdx = totalOutputLines;
+				if (limit !== undefined) {
+					endIdx = startIdx + limit;
+				}
+
+				const slicedLines = outputLines.slice(startIdx, endIdx);
+				const formattedLines = slicedLines.map((line) => {
+					const lineNumStr = line.lineNumStr.padStart(6, " ");
+					return `${lineNumStr}  ${line.text}`;
+				});
+
+				const slicedContent = formattedLines.join("\n");
 
 				let paginationMessage = "";
-				if (actualEndIdx + 1 < totalLines) {
-					paginationMessage = `\n\n--- [TRUNCATED: File continues. Displayed lines ${startIdx + 1}-${actualEndIdx + 1} of ${totalLines} total lines. Use parameters 'offset' and 'limit' to read next pages.] ---`;
+				if (limit !== undefined && startIdx + limit < totalOutputLines) {
+					paginationMessage = `\n\n--- [TRUNCATED: File continues. Displayed lines ${startIdx + 1}-${startIdx + limit} of ${totalOutputLines} total lines. Use parameters 'offset' and 'limit' to read next pages.] ---`;
 				}
 
 				return slicedContent + paginationMessage;
