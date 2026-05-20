@@ -1,6 +1,7 @@
 import type { OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
+import { logger } from "@/utils/logger";
 import type {
 	Channel,
 	ChannelBlockedAttemptEvent,
@@ -34,7 +35,7 @@ export class ChannelManager {
 		this.dispatchTask = this.dispatchOutbound();
 
 		for (const [name, channel] of this.channels.entries()) {
-			console.log(`[Channels] Starting ${name}...`);
+			logger.info(`[Channels] Starting ${name}...`);
 			await channel.start();
 		}
 	}
@@ -55,9 +56,9 @@ export class ChannelManager {
 		for (const [name, channel] of this.channels.entries()) {
 			try {
 				await channel.stop();
-				console.log(`[Channels] Stopped ${name}`);
+				logger.info(`[Channels] Stopped ${name}`);
 			} catch (error) {
-				console.error(`[Channels] Failed to stop ${name}:`, error);
+				logger.error(error, `[Channels] Failed to stop ${name}`);
 			}
 		}
 	}
@@ -70,7 +71,7 @@ export class ChannelManager {
 
 		const token = telegramConfig.token || process.env.TELEGRAM_BOT_TOKEN;
 		if (!token) {
-			console.warn(
+			logger.warn(
 				"[Channels] Telegram is enabled but no token was found. Set channels.telegram.token or TELEGRAM_BOT_TOKEN.",
 			);
 			return;
@@ -78,9 +79,11 @@ export class ChannelManager {
 
 		const channel = new TelegramChannel(this.bus, token, telegramConfig);
 		channel.onInboundMessage = (event) => {
+			logger.info(`[Channels] Inbound message received from ${event.channel}`);
 			this.logInbound(event);
 		};
 		channel.onBlockedAttempt = (event) => {
+			logger.warn(`[Channels] Blocked attempt received from ${event.channel}`);
 			this.logBlockedAttempt(event);
 		};
 		this.channels.set("telegram", channel);
@@ -96,7 +99,7 @@ export class ChannelManager {
 
 				const channel = this.channels.get(msg.channel);
 				if (!channel) {
-					console.warn(
+					logger.warn(
 						`[Channels][BLOCKED] outbound unknown channel=${msg.channel} chat=${msg.chat_id} message="${this.truncateForLog(msg.content)}"`,
 					);
 					continue;
@@ -106,7 +109,7 @@ export class ChannelManager {
 				await this.sendOnce(channel, msg);
 			} catch (error) {
 				if (this.running) {
-					console.error("[Channels] Outbound dispatch error:", error);
+					logger.error(error, "[Channels] Outbound dispatch error");
 				}
 			}
 		}
@@ -140,7 +143,7 @@ export class ChannelManager {
 	}
 
 	private logInbound(event: ChannelInboundEvent): void {
-		console.log(
+		logger.info(
 			`[Channels][IN] channel=${event.channel} chat=${event.chat_id} sender=${event.sender_id} message="${this.truncateForLog(event.content)}"`,
 		);
 	}
@@ -162,7 +165,7 @@ export class ChannelManager {
 
 			if (metadata._stream_end || metadata._reasoning_end) {
 				this.outboundLogBufs.delete(streamId);
-				console.log(
+				logger.info(
 					`[Channels][OUT] channel=${msg.channel} chat=${msg.chat_id} message="${this.truncateForLog(buf)}" [streamed]`,
 				);
 			} else {
@@ -171,13 +174,13 @@ export class ChannelManager {
 			return;
 		}
 
-		console.log(
+		logger.info(
 			`[Channels][OUT] channel=${msg.channel} chat=${msg.chat_id} message="${this.truncateForLog(msg.content)}"`,
 		);
 	}
 
 	private logBlockedAttempt(event: ChannelBlockedAttemptEvent): void {
-		console.warn(
+		logger.warn(
 			`[Channels][BLOCKED] inbound channel=${event.channel} chat=${event.chat_id} sender=${event.sender_id} message="${this.truncateForLog(event.content)}"`,
 		);
 	}

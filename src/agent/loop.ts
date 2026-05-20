@@ -1,6 +1,7 @@
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
+import { logger } from "@/utils/logger";
 
 const INBOUND_BATCH_MAX_CONTENT_LENGTH = 1200;
 const INBOUND_BATCH_DEBOUNCE_MS = 250;
@@ -19,7 +20,7 @@ export class AgentLoop {
 	async start() {
 		if (this.running) return;
 		this.running = true;
-		console.log(`[AgentLoop] Started with model ${this.config.agent.model}`);
+		logger.info(`[AgentLoop] Started with model ${this.config.agent.model}`);
 
 		this.inboundTask = this.processInbound();
 	}
@@ -35,7 +36,7 @@ export class AgentLoop {
 			metadata: { _shutdown: true },
 		});
 		await this.inboundTask;
-		console.log("[AgentLoop] Stopped.");
+		logger.info("[AgentLoop] Stopped.");
 	}
 
 	private async processInbound() {
@@ -51,7 +52,7 @@ export class AgentLoop {
 				}
 				const msg = this.coalesceInbound(batch);
 				const batchTag = batch.length > 1 ? ` [batched x${batch.length}]` : "";
-				console.log(
+				logger.info(
 					"[AgentLoop] Received from " +
 						msg.channel +
 						" (" +
@@ -102,7 +103,7 @@ export class AgentLoop {
 				});
 			} catch (e) {
 				if (this.running) {
-					console.error("Error processing inbound message:", e);
+					logger.error(e, "[AgentLoop] Error processing inbound message");
 				}
 			}
 		}

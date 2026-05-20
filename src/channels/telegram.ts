@@ -1,6 +1,7 @@
 import { Bot } from "grammy";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
+import { logger } from "@/utils/logger";
 import { Channel, type ChannelConfig } from "./base";
 
 interface StreamBuffer {
@@ -44,7 +45,7 @@ export class TelegramChannel extends Channel {
 		// Start in the background
 		this.bot.start({
 			onStart: (info) => {
-				console.log(`[Telegram] Bot started as @${info.username}`);
+				logger.info(`[Telegram] Bot started as @${info.username}`);
 			},
 		});
 	}
