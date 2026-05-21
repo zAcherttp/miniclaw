@@ -59,79 +59,6 @@ For longer tasks, provide brief progress updates at reasonable intervals — a c
 - **No Directory Traversal**: Any attempt to use \`../\`, absolute paths, or symlinks to escape the workspace directory will trigger a security violation.
 - **Safe Commands**: All file and search actions are handled through secure, sandboxed utility APIs. Do not attempt to run arbitrary terminal commands.`;
 
-/**
- * Remove thinking blocks, unclosed trailing tags, and templates from text.
- */
-export function stripThink(text: string): string {
-	let t = text;
-	t = t.replace(/<think>[\s\S]*?<\/think>/g, "");
-	t = t.replace(/^\s*<think>[\s\S]*$/, "");
-	t = t.replace(/<thought>[\s\S]*?<\/thought>/g, "");
-	t = t.replace(/^\s*<thought>[\s\S]*$/, "");
-
-	t = t.replace(/<think(?![A-Za-z0-9_\-:>/])/g, "");
-	t = t.replace(/<thought(?![A-Za-z0-9_\-:>/])/g, "");
-
-	t = t.replace(/^\s*<\/think>\s*/g, "");
-	t = t.replace(/\s*<\/think>\s*$/g, "");
-	t = t.replace(/^\s*<\/thought>\s*/g, "");
-	t = t.replace(/\s*<\/thought>\s*$/g, "");
-
-	t = t.replace(/^\s*<\|?channel\|?>\s*/g, "");
-
-	const partialControlTag =
-		/<\/?(?:t|th|thi|thin|think|tho|thou|thoug|though|thought)>?$|<\|?(?:c|ch|cha|chan|chann|channe|channel)(?:\|?>?)?$/;
-	t = t.replace(partialControlTag, "");
-	t = t.replace(/^\s*<\|?$/g, "");
-
-	return t.trim();
-}
-
-/**
- * Extract thinking content from inline `<think>` / `<thought>` blocks.
- */
-export function extractThink(text: string): [string | null, string] {
-	const parts: string[] = [];
-	const thinkRegex = /<think>([\s\S]*?)<\/think>/g;
-	for (const match of text.matchAll(thinkRegex)) {
-		parts.push(match[1].trim());
-	}
-	const thoughtRegex = /<thought>([\s\S]*?)<\/thought>/g;
-	for (const match of text.matchAll(thoughtRegex)) {
-		parts.push(match[1].trim());
-	}
-	const thinking = parts.length > 0 ? parts.join("\n\n") : null;
-	return [thinking, stripThink(text)];
-}
-
-/**
- * Stateful inline `<think>` extractor for streaming buffers.
- */
-export class IncrementalThinkExtractor {
-	public emitted = "";
-
-	reset(): void {
-		this.emitted = "";
-	}
-
-	async feed(
-		buf: string,
-		emit: (text: string) => Promise<void>,
-	): Promise<boolean> {
-		const [thinking] = extractThink(buf);
-		if (!thinking || thinking === this.emitted) {
-			return false;
-		}
-		const newThink = thinking.substring(this.emitted.length).trim();
-		this.emitted = thinking;
-		if (!newThink) {
-			return false;
-		}
-		await emit(newThink);
-		return true;
-	}
-}
-
 export class AgentLoop {
 	public readonly config: AppConfig;
 	private bus: MessageBus;
@@ -253,7 +180,7 @@ export class AgentLoop {
 						// Prepend the current system message to active messages for model invocation
 						const activeMessages = [
 							new SystemMessage(systemPrompt),
-							...checkpointer.messages.filter((m) => m._getType() !== "system"),
+							...checkpointer.messages.filter((m) => m.type !== "system"),
 						];
 
 						// biome-ignore lint/suspicious/noExplicitAny: BaseChatModel type doesn't expose bindTools, but all concrete providers implement it at runtime
@@ -263,11 +190,8 @@ export class AgentLoop {
 						let stream: any;
 						// biome-ignore lint/suspicious/noExplicitAny: accumulatedMessage type is a union of AIMessageChunk/AIMessage
 						let accumulatedMessage: any = null;
-						let streamBuf = "";
 						let hasReasoned = false;
 						let reasoningClosed = false;
-						let prevClean = "";
-						const thinkExtractor = new IncrementalThinkExtractor();
 
 						try {
 							stream = await modelWithTools.stream(activeMessages, {
@@ -285,77 +209,67 @@ export class AgentLoop {
 									accumulatedMessage = accumulatedMessage.concat(chunk);
 								}
 
-								// 1. Dedicated reasoning content (if supported by the provider)
-								const rDelta = chunk.additional_kwargs?.reasoning_content as
-									| string
-									| undefined;
-								if (rDelta) {
-									hasReasoned = true;
-									await this.bus.publishOutbound({
-										channel: msg.channel,
-										chat_id: msg.chat_id,
-										content: rDelta,
-										reply_to: replyTo,
-										metadata: {
-											_stream_id: streamId,
-											_reasoning_delta: true,
-											reply_to: replyTo,
-										},
-									});
-								}
-
-								// 2. Inline think tags in content
-								const chunkText =
-									typeof chunk.content === "string" ? chunk.content : "";
-								if (chunkText) {
-									streamBuf += chunkText;
-
-									// Check for incremental thinking
-									const [thinkingText] = extractThink(streamBuf);
-									if (thinkingText) {
-										hasReasoned = true;
-										const newThink = thinkingText.substring(
-											thinkExtractor.emitted.length,
-										);
-										if (newThink) {
-											thinkExtractor.emitted = thinkingText;
-											await this.bus.publishOutbound({
-												channel: msg.channel,
-												chat_id: msg.chat_id,
-												content: newThink,
-												reply_to: replyTo,
-												metadata: {
-													_stream_id: streamId,
-													_reasoning_delta: true,
+								// 1. Unified contentBlocks parsing (standard LangChain recommended approach)
+								// biome-ignore lint/suspicious/noExplicitAny: contentBlocks is a dynamic runtime property on AIMessageChunk
+								const contentBlocks = (chunk as any).contentBlocks;
+								if (Array.isArray(contentBlocks) && contentBlocks.length > 0) {
+									for (const block of contentBlocks) {
+										if (block.type === "reasoning") {
+											const rDelta = block.reasoning || block.text || "";
+											if (rDelta) {
+												hasReasoned = true;
+												await this.bus.publishOutbound({
+													channel: msg.channel,
+													chat_id: msg.chat_id,
+													content: rDelta,
 													reply_to: replyTo,
-												},
-											});
+													metadata: {
+														_stream_id: streamId,
+														_reasoning_delta: true,
+														reply_to: replyTo,
+													},
+												});
+											}
+										} else if (block.type === "text") {
+											const tDelta = block.text || "";
+											if (tDelta) {
+												if (hasReasoned && !reasoningClosed) {
+													await this.bus.publishOutbound({
+														channel: msg.channel,
+														chat_id: msg.chat_id,
+														content: "",
+														reply_to: replyTo,
+														metadata: {
+															_stream_id: streamId,
+															_reasoning_end: true,
+															reply_to: replyTo,
+														},
+													});
+													reasoningClosed = true;
+												}
+												await this.bus.publishOutbound({
+													channel: msg.channel,
+													chat_id: msg.chat_id,
+													content: tDelta,
+													reply_to: replyTo,
+													metadata: {
+														_stream_id: streamId,
+														_stream_delta: true,
+														reply_to: replyTo,
+													},
+												});
+											}
 										}
 									}
-
-									// Check for incremental clean content
-									const newClean = stripThink(streamBuf);
-									const incremental = newClean.substring(prevClean.length);
-									if (incremental) {
-										if (hasReasoned && !reasoningClosed) {
-											await this.bus.publishOutbound({
-												channel: msg.channel,
-												chat_id: msg.chat_id,
-												content: "",
-												reply_to: replyTo,
-												metadata: {
-													_stream_id: streamId,
-													_reasoning_end: true,
-													reply_to: replyTo,
-												},
-											});
-											reasoningClosed = true;
-										}
-										prevClean = newClean;
+								} else {
+									// Fallback for standard models streaming plain text without contentBlocks
+									const chunkText =
+										typeof chunk.content === "string" ? chunk.content : "";
+									if (chunkText) {
 										await this.bus.publishOutbound({
 											channel: msg.channel,
 											chat_id: msg.chat_id,
-											content: incremental,
+											content: chunkText,
 											reply_to: replyTo,
 											metadata: {
 												_stream_id: streamId,
