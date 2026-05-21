@@ -1,18 +1,16 @@
-import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { END, START, StateGraph } from "@langchain/langgraph";
+import {
+	type BaseMessage,
+	HumanMessage,
+	SystemMessage,
+	ToolMessage,
+} from "@langchain/core/messages";
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getWorkspaceDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
+import { ContextEngineeringManager } from "./history";
 import { createChatModel } from "./models";
-import {
-	createAgentNode,
-	createToolsNode,
-	memoryNode,
-	shouldContinue,
-} from "./nodes";
-import { AgentState } from "./state";
 import { FileCheckpointSaver } from "./store";
 import { createFilesystemTools } from "./tools/filesystem";
 import { createDelegateTaskTool } from "./tools/subagent";
@@ -134,15 +132,6 @@ export class IncrementalThinkExtractor {
 	}
 }
 
-/**
-/**
- * Formats tool calls as a human-readable hint string without asterisks or arguments.
- */
-function _formatToolCallMessage(toolCalls: { name: string }[]): string {
-	const names = toolCalls.map((tc) => tc.name).join(", ");
-	return `⚙️ Calling ${names}`;
-}
-
 export class AgentLoop {
 	public readonly config: AppConfig;
 	private bus: MessageBus;
@@ -236,52 +225,263 @@ export class AgentLoop {
 						workspaceDir,
 					);
 					const tools = [...baseTools, delegateTaskTool];
+					// biome-ignore lint/suspicious/noExplicitAny: Must use any to bypass StructuredTool vs DynamicStructuredTool calling overload mismatch
+					const toolsByName = new Map<string, any>(
+						tools.map((t) => [t.name, t]),
+					);
 
-					const workflow = new StateGraph(AgentState)
-						.addNode("memory", memoryNode)
-						.addNode(
-							"agent",
-							createAgentNode(
-								model,
-								tools,
-								this.bus,
-								msg.channel,
-								msg.chat_id,
-								replyTo,
-								streamId,
-								controller,
-							),
-						)
-						.addNode(
-							"tools",
-							createToolsNode(
-								tools,
-								this.bus,
-								msg.channel,
-								msg.chat_id,
-								streamId,
-								controller,
-							),
-						)
-						.addEdge(START, "memory")
-						.addEdge("memory", "agent")
-						.addConditionalEdges("agent", shouldContinue)
-						.addEdge("tools", "agent");
+					// Append user message to history
+					checkpointer.messages.push(new HumanMessage(msg.content));
+					await checkpointer.save();
 
-					const app = workflow.compile({ checkpointer });
+					let loopCount = 0;
+					const maxLoops = 10;
 
-					const inputs = {
-						messages: [new HumanMessage(msg.content)] as BaseMessage[],
-						workspaceDir,
-						chatId: msg.chat_id,
-					};
+					while (loopCount < maxLoops) {
+						if (controller.signal.aborted) {
+							break;
+						}
+						loopCount++;
 
-					const config = {
-						configurable: { thread_id: msg.chat_id },
-						signal: controller.signal,
-					};
+						// Prepare guidelines and system prompt dynamically
+						const memoryContext =
+							await ContextEngineeringManager.loadMemoryFiles(workspaceDir);
+						const systemPrompt =
+							DEFAULT_SYSTEM_PROMPT +
+							(memoryContext ? `\n${memoryContext}` : "");
 
-					await app.invoke(inputs, config);
+						// Prepend the current system message to active messages for model invocation
+						const activeMessages = [
+							new SystemMessage(systemPrompt),
+							...checkpointer.messages.filter((m) => m._getType() !== "system"),
+						];
+
+						// biome-ignore lint/suspicious/noExplicitAny: BaseChatModel type doesn't expose bindTools, but all concrete providers implement it at runtime
+						const modelWithTools = (model as any).bindTools(tools);
+
+						// biome-ignore lint/suspicious/noExplicitAny: stream type can vary by concrete provider
+						let stream: any;
+						// biome-ignore lint/suspicious/noExplicitAny: accumulatedMessage type is a union of AIMessageChunk/AIMessage
+						let accumulatedMessage: any = null;
+						let streamBuf = "";
+						let hasReasoned = false;
+						let reasoningClosed = false;
+						let prevClean = "";
+						const thinkExtractor = new IncrementalThinkExtractor();
+
+						try {
+							stream = await modelWithTools.stream(activeMessages, {
+								signal: controller.signal,
+							});
+
+							for await (const chunk of stream) {
+								if (controller.signal.aborted) {
+									break;
+								}
+
+								if (accumulatedMessage === null) {
+									accumulatedMessage = chunk;
+								} else {
+									accumulatedMessage = accumulatedMessage.concat(chunk);
+								}
+
+								// 1. Dedicated reasoning content (if supported by the provider)
+								const rDelta = chunk.additional_kwargs?.reasoning_content as
+									| string
+									| undefined;
+								if (rDelta) {
+									hasReasoned = true;
+									await this.bus.publishOutbound({
+										channel: msg.channel,
+										chat_id: msg.chat_id,
+										content: rDelta,
+										reply_to: replyTo,
+										metadata: {
+											_stream_id: streamId,
+											_reasoning_delta: true,
+											reply_to: replyTo,
+										},
+									});
+								}
+
+								// 2. Inline think tags in content
+								const chunkText =
+									typeof chunk.content === "string" ? chunk.content : "";
+								if (chunkText) {
+									streamBuf += chunkText;
+
+									// Check for incremental thinking
+									const [thinkingText] = extractThink(streamBuf);
+									if (thinkingText) {
+										hasReasoned = true;
+										const newThink = thinkingText.substring(
+											thinkExtractor.emitted.length,
+										);
+										if (newThink) {
+											thinkExtractor.emitted = thinkingText;
+											await this.bus.publishOutbound({
+												channel: msg.channel,
+												chat_id: msg.chat_id,
+												content: newThink,
+												reply_to: replyTo,
+												metadata: {
+													_stream_id: streamId,
+													_reasoning_delta: true,
+													reply_to: replyTo,
+												},
+											});
+										}
+									}
+
+									// Check for incremental clean content
+									const newClean = stripThink(streamBuf);
+									const incremental = newClean.substring(prevClean.length);
+									if (incremental) {
+										if (hasReasoned && !reasoningClosed) {
+											await this.bus.publishOutbound({
+												channel: msg.channel,
+												chat_id: msg.chat_id,
+												content: "",
+												reply_to: replyTo,
+												metadata: {
+													_stream_id: streamId,
+													_reasoning_end: true,
+													reply_to: replyTo,
+												},
+											});
+											reasoningClosed = true;
+										}
+										prevClean = newClean;
+										await this.bus.publishOutbound({
+											channel: msg.channel,
+											chat_id: msg.chat_id,
+											content: incremental,
+											reply_to: replyTo,
+											metadata: {
+												_stream_id: streamId,
+												_stream_delta: true,
+												reply_to: replyTo,
+											},
+										});
+									}
+								}
+							}
+
+							if (hasReasoned && !reasoningClosed) {
+								await this.bus.publishOutbound({
+									channel: msg.channel,
+									chat_id: msg.chat_id,
+									content: "",
+									reply_to: replyTo,
+									metadata: {
+										_stream_id: streamId,
+										_reasoning_end: true,
+										reply_to: replyTo,
+									},
+								});
+								reasoningClosed = true;
+							}
+						} catch (e) {
+							if (controller.signal.aborted) {
+								// safely ignore
+							} else {
+								logger.error(
+									e,
+									"[AgentLoop] Failed to stream chat model, falling back to invoke",
+								);
+								accumulatedMessage = await modelWithTools.invoke(
+									activeMessages,
+									{
+										signal: controller.signal,
+									},
+								);
+							}
+						}
+
+						if (controller.signal.aborted) {
+							break;
+						}
+
+						if (!accumulatedMessage) {
+							break;
+						}
+
+						// Save intermediate model output to store
+						checkpointer.messages.push(accumulatedMessage);
+						await checkpointer.save();
+
+						const toolCalls = accumulatedMessage.tool_calls;
+						if (
+							!toolCalls ||
+							!Array.isArray(toolCalls) ||
+							toolCalls.length === 0
+						) {
+							break;
+						}
+
+						// Execute tool calls
+						const hintText = `⚙️ Calling ${toolCalls.map((tc) => tc.name).join(", ")}`;
+						await this.bus.publishOutbound({
+							channel: msg.channel,
+							chat_id: msg.chat_id,
+							content: hintText,
+							metadata: {
+								_stream_id: `tools-${streamId}`,
+								_stream_delta: true,
+								_overwrite: true,
+							},
+						});
+
+						for (const tc of toolCalls) {
+							if (controller.signal.aborted) {
+								break;
+							}
+							const tool = toolsByName.get(tc.name);
+							let result: string;
+							const argsStr = JSON.stringify(tc.args);
+							const truncatedArgs =
+								argsStr.length > 150
+									? `${argsStr.substring(0, 147)}...`
+									: argsStr;
+							logger.info(
+								`[AgentLoop] Calling tool: ${tc.name} with args: ${truncatedArgs}`,
+							);
+
+							if (!tool) {
+								result = `Error: Tool ${tc.name} is not available.`;
+								logger.error(`[AgentLoop] Tool ${tc.name} is not available.`);
+							} else {
+								try {
+									result = await tool.invoke(tc.args);
+									const truncatedResult =
+										result.length > 200
+											? `${result.substring(0, 197)}...`
+											: result;
+									logger.info(
+										`[AgentLoop] Tool ${tc.name} returned: ${truncatedResult}`,
+									);
+								} catch (err) {
+									const errorMsg =
+										err instanceof Error ? err.message : String(err);
+									result = `Error executing tool ${tc.name}: ${errorMsg}`;
+									logger.error(
+										err,
+										`[AgentLoop] Tool ${tc.name} failed with error: ${errorMsg}`,
+									);
+								}
+							}
+
+							const toolMsg = new ToolMessage({
+								content: result,
+								tool_call_id: tc.id ?? "",
+								name: tc.name,
+							});
+							checkpointer.messages.push(toolMsg);
+						}
+
+						// Save checkpoint after all tool calls finish execution
+						await checkpointer.save();
+					}
 
 					// Finalize streaming channels
 					await this.bus.publishOutbound({
@@ -383,26 +583,12 @@ export class AgentLoop {
 }
 
 /**
- * Loads recent message history for a given chatId from the LangGraph checkpoint store.
+ * Loads recent message history for a given chatId from the checkpoint store.
  */
 export async function getSessionMessages(
 	chatId: string,
 ): Promise<BaseMessage[]> {
 	const checkpointer = new FileCheckpointSaver(chatId);
 	await checkpointer.load();
-
-	const workflow = new StateGraph(AgentState)
-		.addNode("memory", memoryNode)
-		.addNode("agent", async (_state) => ({ messages: [] }))
-		.addEdge(START, "memory")
-		.addEdge("memory", "agent")
-		.addEdge("agent", END);
-
-	const app = workflow.compile({ checkpointer });
-	try {
-		const state = await app.getState({ configurable: { thread_id: chatId } });
-		return state.values?.messages || [];
-	} catch {
-		return [];
-	}
+	return checkpointer.messages;
 }

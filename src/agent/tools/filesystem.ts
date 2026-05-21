@@ -247,5 +247,123 @@ export const createFilesystemTools = (workspaceDir: string) => {
 		},
 	});
 
-	return [readFileTool, writeFileTool, listFilesTool, grepSearchTool];
+	// 5. edit_file tool (targeted find-and-replace)
+	const editFileTool = new DynamicStructuredTool({
+		name: "edit_file",
+		description:
+			"Makes a targeted edit to a file by replacing an exact string match with new content. " +
+			"Use this instead of write_file when you only need to change a specific part of a file. " +
+			"The old_string must match EXACTLY (including whitespace and indentation). " +
+			"If old_string appears more than once, the edit is rejected as ambiguous — provide a larger unique snippet. " +
+			"To delete text, set new_string to an empty string. " +
+			"To insert text, set old_string to the text immediately before the insertion point and include it in new_string with the addition appended.",
+		schema: z.object({
+			file_path: z
+				.string()
+				.describe(
+					"Path to the file to edit (relative or absolute within the workspace).",
+				),
+			old_string: z
+				.string()
+				.describe(
+					"The exact text to find and replace. Must match the file content exactly, including whitespace and indentation. Must not be empty.",
+				),
+			new_string: z
+				.string()
+				.describe(
+					"The replacement text. Use an empty string to delete the matched text.",
+				),
+		}),
+		func: async ({
+			file_path: filePath,
+			old_string: oldStr,
+			new_string: newStr,
+		}) => {
+			if (!oldStr) {
+				return "Error: old_string must not be empty. To create a new file, use write_file instead.";
+			}
+
+			try {
+				const securePath = resolveSecurePath(workspaceDir, filePath);
+				let content: string;
+				try {
+					content = await fs.readFile(securePath, "utf-8");
+				} catch {
+					return `Error: File "${filePath}" does not exist. Use write_file to create new files.`;
+				}
+
+				// Count occurrences to detect ambiguity
+				const occurrences: number[] = [];
+				let searchIdx = 0;
+				while (searchIdx < content.length) {
+					const foundIdx = content.indexOf(oldStr, searchIdx);
+					if (foundIdx === -1) break;
+					occurrences.push(foundIdx);
+					searchIdx = foundIdx + 1;
+				}
+
+				if (occurrences.length === 0) {
+					// Help the agent debug: show a snippet of the file around where they might have expected the match
+					const lines = content.split(/\r?\n/);
+					const preview = lines.slice(0, Math.min(20, lines.length)).join("\n");
+					return (
+						`Error: old_string not found in "${filePath}". ` +
+						"Make sure the text matches exactly, including whitespace and indentation.\n\n" +
+						`First ${Math.min(20, lines.length)} lines of file:\n${preview}`
+					);
+				}
+
+				if (occurrences.length > 1) {
+					// Show context around each occurrence to help the agent pick a unique snippet
+					const contextSnippets = occurrences.slice(0, 5).map((idx, i) => {
+						const before = content.substring(Math.max(0, idx - 40), idx);
+						const after = content.substring(
+							idx + oldStr.length,
+							Math.min(content.length, idx + oldStr.length + 40),
+						);
+						return `  Occurrence ${i + 1} (char ${idx}): ...${before}<<<HERE>>>${after}...`;
+					});
+					return (
+						`Error: old_string appears ${occurrences.length} times in "${filePath}". ` +
+						"The edit is ambiguous. Provide a larger, unique snippet that includes enough surrounding context to match exactly once.\n\n" +
+						`Occurrences:\n${contextSnippets.join("\n")}`
+					);
+				}
+
+				// Exactly one match — perform the replacement
+				const newContent = content.replace(oldStr, newStr);
+				await fs.writeFile(securePath, newContent, "utf-8");
+
+				// Build a helpful diff-like summary
+				const oldLines = oldStr.split(/\r?\n/);
+				const newLines = newStr.split(/\r?\n/);
+				const changeIdx = occurrences[0];
+				const lineNumber = content
+					.substring(0, changeIdx)
+					.split(/\r?\n/).length;
+
+				if (newStr === "") {
+					return `Successfully deleted ${oldLines.length} line(s) at line ${lineNumber} in "${filePath}".`;
+				}
+
+				return (
+					`Successfully edited "${filePath}" at line ${lineNumber}. ` +
+					`Replaced ${oldLines.length} line(s) with ${newLines.length} line(s).`
+				);
+			} catch (err: unknown) {
+				if (err instanceof PathTraversalError) {
+					return err.message;
+				}
+				return `Error editing file: ${(err as Error).message}`;
+			}
+		},
+	});
+
+	return [
+		readFileTool,
+		writeFileTool,
+		editFileTool,
+		listFilesTool,
+		grepSearchTool,
+	];
 };

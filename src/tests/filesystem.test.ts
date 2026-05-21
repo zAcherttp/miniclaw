@@ -8,6 +8,7 @@ describe("Secure Filesystem & Search Tools", () => {
 	const testSandbox = path.resolve(__dirname, "tmp-sandbox");
 	let readFileTool: StructuredTool;
 	let writeFileTool: StructuredTool;
+	let editFileTool: StructuredTool;
 	let listFilesTool: StructuredTool;
 	let grepSearchTool: StructuredTool;
 
@@ -20,8 +21,9 @@ describe("Secure Filesystem & Search Tools", () => {
 		const tools = createFilesystemTools(testSandbox);
 		readFileTool = tools[0];
 		writeFileTool = tools[1];
-		listFilesTool = tools[2];
-		grepSearchTool = tools[3];
+		editFileTool = tools[2];
+		listFilesTool = tools[3];
+		grepSearchTool = tools[4];
 	});
 
 	afterAll(async () => {
@@ -109,6 +111,90 @@ describe("Secure Filesystem & Search Tools", () => {
 		it("should reject path traversal gracefully", async () => {
 			const res = await readFileTool.invoke({
 				file_path: "../../tsconfig.json",
+			});
+			expect(res).toContain("Security Violation");
+		});
+	});
+
+	describe("edit_file", () => {
+		it("should replace a unique string match in a file", async () => {
+			await writeFileTool.invoke({
+				path: "editable.txt",
+				content: "Hello World\nFoo Bar\nBaz Qux",
+			});
+
+			const res = await editFileTool.invoke({
+				file_path: "editable.txt",
+				old_string: "Foo Bar",
+				new_string: "Foo Updated",
+			});
+			expect(res).toContain('Successfully edited "editable.txt"');
+			expect(res).toContain("line 2");
+
+			const content = await fs.readFile(
+				path.join(testSandbox, "editable.txt"),
+				"utf-8",
+			);
+			expect(content).toBe("Hello World\nFoo Updated\nBaz Qux");
+		});
+
+		it("should reject ambiguous edits when old_string appears multiple times", async () => {
+			await writeFileTool.invoke({
+				path: "dupes.txt",
+				content: "apple banana\napple cherry\napple date",
+			});
+
+			const res = await editFileTool.invoke({
+				file_path: "dupes.txt",
+				old_string: "apple",
+				new_string: "orange",
+			});
+			expect(res).toContain("appears 3 times");
+			expect(res).toContain("ambiguous");
+
+			// Verify file was NOT modified
+			const content = await fs.readFile(
+				path.join(testSandbox, "dupes.txt"),
+				"utf-8",
+			);
+			expect(content).toBe("apple banana\napple cherry\napple date");
+		});
+
+		it("should return an error when old_string is not found", async () => {
+			const res = await editFileTool.invoke({
+				file_path: "editable.txt",
+				old_string: "NONEXISTENT_TEXT",
+				new_string: "replacement",
+			});
+			expect(res).toContain("old_string not found");
+			expect(res).toContain("First ");
+		});
+
+		it("should delete text when new_string is empty", async () => {
+			await writeFileTool.invoke({
+				path: "deletable.txt",
+				content: "keep this\nremove this line\nkeep this too",
+			});
+
+			const res = await editFileTool.invoke({
+				file_path: "deletable.txt",
+				old_string: "\nremove this line",
+				new_string: "",
+			});
+			expect(res).toContain("Successfully deleted");
+
+			const content = await fs.readFile(
+				path.join(testSandbox, "deletable.txt"),
+				"utf-8",
+			);
+			expect(content).toBe("keep this\nkeep this too");
+		});
+
+		it("should reject path traversal gracefully", async () => {
+			const res = await editFileTool.invoke({
+				file_path: "../../etc/passwd",
+				old_string: "root",
+				new_string: "hacked",
 			});
 			expect(res).toContain("Security Violation");
 		});

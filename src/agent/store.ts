@@ -1,17 +1,93 @@
 import fs from "node:fs/promises";
 import path from "node:path";
-import { MemorySaver } from "@langchain/langgraph";
+import {
+	AIMessage,
+	type BaseMessage,
+	HumanMessage,
+	SystemMessage,
+	ToolMessage,
+} from "@langchain/core/messages";
 import { getAppDir } from "@/config/paths";
 
+export interface SerializedMessage {
+	type: string;
+	// biome-ignore lint/suspicious/noExplicitAny: content can be a string or array of complex objects
+	content: string | any[];
+	name?: string;
+	id?: string;
+	// biome-ignore lint/suspicious/noExplicitAny: additional_kwargs is arbitrary metadata
+	additional_kwargs?: Record<string, any>;
+	// biome-ignore lint/suspicious/noExplicitAny: tool_calls is structured but dynamic JSON from model
+	tool_calls?: any[];
+	tool_call_id?: string;
+}
+
+export function serializeMessage(message: BaseMessage): SerializedMessage {
+	const res: SerializedMessage = {
+		type: message._getType(),
+		content: message.content,
+	};
+	if (message.name) res.name = message.name;
+	if (message.id) res.id = message.id;
+	if (
+		message.additional_kwargs &&
+		Object.keys(message.additional_kwargs).length > 0
+	) {
+		res.additional_kwargs = message.additional_kwargs;
+	}
+	// biome-ignore lint/suspicious/noExplicitAny: cast to check tool_calls property
+	if ("tool_calls" in message && Array.isArray((message as any).tool_calls)) {
+		// biome-ignore lint/suspicious/noExplicitAny: cast to read tool_calls property
+		res.tool_calls = (message as any).tool_calls;
+	}
+	if (
+		"tool_call_id" in message &&
+		// biome-ignore lint/suspicious/noExplicitAny: cast to check tool_call_id property
+		typeof (message as any).tool_call_id === "string"
+	) {
+		// biome-ignore lint/suspicious/noExplicitAny: cast to read tool_call_id property
+		res.tool_call_id = (message as any).tool_call_id;
+	}
+	return res;
+}
+
+export function deserializeMessage(data: SerializedMessage): BaseMessage {
+	const fields = {
+		content: data.content,
+		name: data.name,
+		id: data.id,
+		additional_kwargs: data.additional_kwargs,
+	};
+
+	switch (data.type) {
+		case "human":
+			return new HumanMessage(fields);
+		case "ai":
+			return new AIMessage({
+				...fields,
+				tool_calls: data.tool_calls,
+			});
+		case "system":
+			return new SystemMessage(fields);
+		case "tool":
+			return new ToolMessage({
+				...fields,
+				tool_call_id: data.tool_call_id || "",
+			});
+		default:
+			return new HumanMessage(fields);
+	}
+}
+
 /**
- * A persistent file-based checkpointer for LangGraph.
- * Inherits from MemorySaver and serializes checkpoints/writes to the session directory.
+ * A persistent file-based session store for LangChain messages.
+ * Serializes checkpoints/writes directly to the session directory.
  */
-export class FileCheckpointSaver extends MemorySaver {
+export class FileCheckpointSaver {
 	private filePath: string;
+	public messages: BaseMessage[] = [];
 
 	constructor(chatId: string) {
-		super();
 		const sessionsDir = path.join(getAppDir(), "sessions", chatId);
 		this.filePath = path.join(sessionsDir, "checkpoint.json");
 	}
@@ -23,12 +99,14 @@ export class FileCheckpointSaver extends MemorySaver {
 		try {
 			const content = await fs.readFile(this.filePath, "utf-8");
 			const data = JSON.parse(content);
-			this.storage = data.storage || {};
-			this.writes = data.writes || {};
+			if (data && Array.isArray(data.messages)) {
+				// biome-ignore lint/suspicious/noExplicitAny: raw JSON data deserialization
+				this.messages = data.messages.map((m: any) => deserializeMessage(m));
+			} else {
+				this.messages = [];
+			}
 		} catch {
-			// File doesn't exist or is corrupted; keep default empty structures
-			this.storage = {};
-			this.writes = {};
+			this.messages = [];
 		}
 	}
 
@@ -38,9 +116,9 @@ export class FileCheckpointSaver extends MemorySaver {
 	async save(): Promise<void> {
 		try {
 			await fs.mkdir(path.dirname(this.filePath), { recursive: true });
+			const serialized = this.messages.map((m) => serializeMessage(m));
 			const data = {
-				storage: this.storage,
-				writes: this.writes,
+				messages: serialized,
 			};
 			await fs.writeFile(this.filePath, JSON.stringify(data, null, 2), "utf-8");
 		} catch (err) {
@@ -54,8 +132,7 @@ export class FileCheckpointSaver extends MemorySaver {
 	async clear(): Promise<void> {
 		try {
 			await fs.rm(this.filePath, { force: true });
-			this.storage = {};
-			this.writes = {};
+			this.messages = [];
 		} catch (err) {
 			console.error("[FileCheckpointSaver] Failed to clear checkpoint:", err);
 		}
@@ -74,40 +151,9 @@ export class FileCheckpointSaver extends MemorySaver {
 				`checkpoint_${timestamp}.json`,
 			);
 			await fs.rename(this.filePath, archivePath);
-			this.storage = {};
-			this.writes = {};
+			this.messages = [];
 		} catch {
 			// file doesn't exist, nothing to archive
 		}
-	}
-
-	// Override put to persist on write
-	override async put(
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		config: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		checkpoint: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		metadata: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-	): Promise<any> {
-		const res = await super.put(config, checkpoint, metadata);
-		await this.save();
-		return res;
-	}
-
-	// Override putWrites to persist on write
-	override async putWrites(
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		config: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		writes: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-		taskId: any,
-		// biome-ignore lint/suspicious/noExplicitAny: Must match MemorySaver base class signature
-	): Promise<any> {
-		const res = await super.putWrites(config, writes, taskId);
-		await this.save();
-		return res;
 	}
 }

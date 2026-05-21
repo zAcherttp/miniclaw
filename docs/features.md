@@ -48,26 +48,28 @@ graph TB
     subgraph AgentCore["Agent Core"]
         AgentLoop["AgentLoop<br/><code>src/agent/loop.ts</code>"]
 
-        subgraph LangGraph["Compiled LangGraph StateGraph"]
+        subgraph LangChainLoop["Vanilla LangChain Loop"]
             direction TB
-            MN["memoryNode<br/>Injects AGENTS.md +<br/>preferences.md"]
-            AN["agentNode<br/>LLM Chat Model<br/>+ Tool Binding"]
-            TN["toolsNode<br/>Sandboxed Tool<br/>Executor"]
-            SC{"shouldContinue<br/>Router"}
+            PrepPrompt["Load GUIDELINES & System Prompt"]
+            ModelExec["ChatModel.stream<br/>+ Tool Binding"]
+            ExtractDeltas["IncrementalThinkExtractor<br/>reasoning & content stream"]
+            SC{"Has Tool Calls?"}
+            ToolExec["Sequential Tool<br/>Execution"]
 
-            MN --> AN
-            AN --> SC
-            SC -- "tool_calls present" --> TN
-            TN --> AN
-            SC -- "no tool_calls" --> FIN["__end__"]
+            PrepPrompt --> ModelExec
+            ModelExec --> ExtractDeltas
+            ExtractDeltas --> SC
+            SC -- "yes" --> ToolExec
+            ToolExec --> PrepPrompt
+            SC -- "no" --> FIN["__end__"]
         end
 
-        AgentLoop --> LangGraph
+        AgentLoop --> LangChainLoop
     end
 
     InQ --> AgentLoop
-    AN -- "stream deltas<br/>reasoning + content" --> OutQ
-    TN -- "⚙️ tool hints" --> OutQ
+    ExtractDeltas -- "stream deltas<br/>reasoning + content" --> OutQ
+    ToolExec -- "⚙️ tool hints" --> OutQ
 
     subgraph Persistence["Persistence Layer"]
         FCS["FileCheckpointSaver<br/><code>src/agent/store.ts</code>"]
@@ -75,8 +77,8 @@ graph TB
         FCS --> CP
     end
 
-    LangGraph -- "put / putWrites" --> FCS
-    FCS -- "load" --> LangGraph
+    LangChainLoop -- "save" --> FCS
+    FCS -- "load" --> LangChainLoop
 
     subgraph ContextEng["Context Engineering"]
         CEM["ContextEngineeringManager<br/><code>src/agent/history.ts</code>"]
@@ -86,7 +88,7 @@ graph TB
         CEM --> PREFS
     end
 
-    MN --> CEM
+    PrepPrompt --> CEM
 
     subgraph ModelGateway["Model Gateway"]
         MG["initChatModel<br/><code>src/agent/models.ts</code>"]
@@ -98,7 +100,7 @@ graph TB
         MG --> Gemini
     end
 
-    AN --> MG
+    ModelExec --> MG
 
     subgraph ToolSuite["Sandboxed Tool Suite"]
         FS_TOOLS["Filesystem Tools<br/><code>src/agent/tools/filesystem.ts</code>"]
@@ -116,9 +118,9 @@ graph TB
         FS_TOOLS --- GS
     end
 
-    TN --> FS_TOOLS
-    TN --> TODO
-    TN --> DELEGATE
+    ToolExec --> FS_TOOLS
+    ToolExec --> TODO
+    ToolExec --> DELEGATE
 
     subgraph Security["Sandbox Security"]
         SEC["resolveSecurePath<br/><code>src/agent/security.ts</code>"]
@@ -144,7 +146,7 @@ graph TB
     classDef security fill:#7b2d26,stroke:#c0392b,color:#fff
     classDef gateway fill:#1c3879,stroke:#2d6da5,color:#fff
 
-    class AgentLoop,LangGraph,MN,AN,TN,SC,FIN core
+    class AgentLoop,LangChainLoop,PrepPrompt,ModelExec,ExtractDeltas,SC,ToolExec,FIN core
     class TG,CM,OOB,MDV2,Draft,Recovery channel
     class FCS,CP,CEM,AGENTS,PREFS persistence
     class FS_TOOLS,TODO,DELEGATE,LF,WF,RF,GS,SA,SA_TOOLS tools
@@ -157,13 +159,10 @@ graph TB
 ## 🚀 Intentional Features & Architecture Tree
 
 ### 🤖 Agent Loop & Orchestration
-* **Compiled LangGraph Architecture** (`src/agent/loop.ts` & `src/agent/nodes.ts` & `src/agent/state.ts`)
-  + Uses a compiled `StateGraph` consisting of distinct nodes:
-    - **`memoryNode`**: Loads global memory preferences (`preferences.md`) and workspace instructions (`AGENTS.md`) and attaches them to `SystemMessage`.
-    - **`agentNode`**: Bound with dynamic sandboxed tools and streams token results in real time.
-    - **`toolsNode`**: Runs filesystems and todos tools sequentially, emitting out-of-band status cues to the bus.
-    - **`shouldContinue`**: Conditional edge router mapping LLM tool invocation triggers.
-  + Employs declarative LangGraph states utilizing `messages`, `workspaceDir`, and `chatId` state annotations.
+* **Vanilla LangChain Execution Loop** (`src/agent/loop.ts`)
+  + Overhauls complex graph compilation with a highly direct, lightweight, procedural `while` execution loop.
+  + Dynamically injects workspace guidelines (`AGENTS.md`) and user preferences (`preferences.md`) as the primary context for the LLM during generation, prepended temporarily as a `SystemMessage`.
+  + Features sequential tool execution, automatic recovery, and intermediate checkpointing.
 * **Universal Model Gateway Routing** (`src/agent/models.ts`)
   + Standardizes model configurations to LangChain's universal `initChatModel` router.
   + Dynamically normalizes model names (e.g. converting custom prefix styles like `google_genai:` to standard provider formats).
@@ -171,7 +170,7 @@ graph TB
     - **Ollama**: Connects to local/cloud services via custom `baseUrl` matching `OLLAMA_API_URL`.
     - **OpenAI**: Configures base URLs matching `OPENAI_API_BASE` for custom gateway and proxy routes.
     - **Google GenAI**: Configures security API keys and turns on advanced settings like `reasoningEffort: "medium"` for Gemini models.
-* **Unified Reasoner & Real-time Stream Parser** (`src/agent/loop.ts` & `src/agent/nodes.ts`)
+* **Unified Reasoner & Real-time Stream Parser** (`src/agent/loop.ts`)
   + Integrates `IncrementalThinkExtractor` to dynamically isolate thinking thoughts enclosed in `<think>...</think>` blocks.
   + Streams reasoning outputs instantly as `_reasoning_delta` chunks.
   + Shuts reasoning blocks using `_reasoning_end` and transitions seamlessly into standard response streaming via `_stream_delta`.
@@ -179,7 +178,7 @@ graph TB
 * **Ephemeral Subagent Tool Task Guard** (`src/agent/tools/subagent.ts`)
   + Spawns ephemeral, autonomous subagents for deep research and heavy file manipulation tasks.
   + Restricts recursive subagent spawning by filtering out the `delegate_task` tool from the subagent toolsets.
-* **Fail-Safe Fallback Invocation** (`src/agent/nodes.ts`)
+* **Fail-Safe Fallback Invocation** (`src/agent/loop.ts`)
   + Automatically catches any errors during stream initialization.
   + Gracefully falls back to a clean, non-streaming `modelWithTools.invoke` execution path to maintain agent responsiveness.
 
@@ -187,8 +186,9 @@ graph TB
 
 ### 🔒 Store & Checkpointing
 * **Durable File Checkpointer** (`src/agent/store.ts`)
-  + Implements a custom `FileCheckpointSaver` extending `MemorySaver` to persist graph states automatically on every `put` and `putWrites` trigger.
-  + Serializes and writes thread session states directly to `<appDir>/sessions/<chatId>/checkpoint.json`.
+  + Implements a custom `FileCheckpointSaver` that persists conversation history as a clean, human-readable JSON message-list format.
+  + Serializes and maps standard LangChain messages (`HumanMessage`, `AIMessage`, `SystemMessage`, `ToolMessage`) to their disk JSON structure and back dynamically.
+  + Writes thread session states directly to `<appDir>/sessions/<chatId>/checkpoint.json`.
   + Supports transactional archivers and hard wipes for total thread control.
 
 ---
@@ -209,6 +209,11 @@ graph TB
   + Lists contents and structures of the active workspace with strict path limits.
 * **`write_file`** (`src/agent/tools/filesystem.ts`)
   + Safely writes text files. Automatically builds missing intermediate folders.
+* **`edit_file`** (`src/agent/tools/filesystem.ts`)
+  + Targeted find-and-replace editor for modifying specific parts of a file without rewriting the entire contents.
+  + Requires `old_string` to match exactly once in the file (including whitespace/indentation). Rejects ambiguous edits if multiple matches are found, returning occurrence context to guide the agent toward a unique snippet.
+  + Supports text deletion (empty `new_string`) and text insertion (include anchor text in both `old_string` and `new_string`).
+  + Returns line number and change summary on success, or diagnostic context on failure.
 * **`read_file`** (`src/agent/tools/filesystem.ts`)
   + Fully optimized for the LangChain DeepAgent specification.
   + Supports **0-indexed pagination** via `offset` (starting line) and `limit` (max lines to retrieve) parameters to keep the prompt context small.
