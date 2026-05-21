@@ -4,13 +4,166 @@ This document lists the features intentionally implemented in the `miniclaw` ass
 
 ---
 
+## 🗺️ System Architecture Overview
+
+```mermaid
+graph TB
+    subgraph Entrypoint["CLI Entrypoint"]
+        CLI["miniclaw start<br/><code>src/cli/commands.ts</code>"]
+    end
+
+    CLI --> Config["Config Loader<br/><code>src/config/</code>"]
+    CLI --> Bus
+    CLI --> AgentLoop
+    CLI --> CM
+
+    subgraph MessageBusLayer["MessageBus &lpar;Async Queue&rpar;"]
+        Bus["MessageBus<br/><code>src/bus/queue.ts</code>"]
+        InQ["Inbound Queue"]
+        OutQ["Outbound Queue"]
+        Bus --- InQ
+        Bus --- OutQ
+    end
+
+    subgraph ChannelLayer["Channel Layer"]
+        CM["ChannelManager<br/><code>src/channels/manager.ts</code>"]
+        TG["TelegramChannel<br/><code>src/channels/telegram.ts</code>"]
+        CM --> TG
+    end
+
+    TG -- "user message" --> InQ
+    OutQ -- "stream deltas / final reply" --> TG
+
+    subgraph TGFeatures["Telegram Features"]
+        OOB["/stop /new /clear /status /help<br/>Out-of-Band Commands"]
+        MDV2["MarkdownV2 Formatter<br/><code>toMarkdownV2()</code>"]
+        Draft["Draft Streaming<br/><code>sendMessageDraft</code>"]
+        Recovery["Stream Recovery<br/><code>telegram_streams.json</code>"]
+    end
+    TG --- OOB
+    TG --- MDV2
+    TG --- Draft
+    TG --- Recovery
+
+    subgraph AgentCore["Agent Core"]
+        AgentLoop["AgentLoop<br/><code>src/agent/loop.ts</code>"]
+
+        subgraph LangGraph["Compiled LangGraph StateGraph"]
+            direction TB
+            MN["memoryNode<br/>Injects AGENTS.md +<br/>preferences.md"]
+            AN["agentNode<br/>LLM Chat Model<br/>+ Tool Binding"]
+            TN["toolsNode<br/>Sandboxed Tool<br/>Executor"]
+            SC{"shouldContinue<br/>Router"}
+
+            MN --> AN
+            AN --> SC
+            SC -- "tool_calls present" --> TN
+            TN --> AN
+            SC -- "no tool_calls" --> FIN["__end__"]
+        end
+
+        AgentLoop --> LangGraph
+    end
+
+    InQ --> AgentLoop
+    AN -- "stream deltas<br/>reasoning + content" --> OutQ
+    TN -- "⚙️ tool hints" --> OutQ
+
+    subgraph Persistence["Persistence Layer"]
+        FCS["FileCheckpointSaver<br/><code>src/agent/store.ts</code>"]
+        CP["sessions/&lt;chatId&gt;/<br/>checkpoint.json"]
+        FCS --> CP
+    end
+
+    LangGraph -- "put / putWrites" --> FCS
+    FCS -- "load" --> LangGraph
+
+    subgraph ContextEng["Context Engineering"]
+        CEM["ContextEngineeringManager<br/><code>src/agent/history.ts</code>"]
+        AGENTS["AGENTS.md<br/>&lpar;workspace&rpar;"]
+        PREFS["preferences.md<br/>&lpar;~/.miniclaw/&rpar;"]
+        CEM --> AGENTS
+        CEM --> PREFS
+    end
+
+    MN --> CEM
+
+    subgraph ModelGateway["Model Gateway"]
+        MG["initChatModel<br/><code>src/agent/models.ts</code>"]
+        Ollama["Ollama"]
+        OpenAI["OpenAI"]
+        Gemini["Google GenAI"]
+        MG --> Ollama
+        MG --> OpenAI
+        MG --> Gemini
+    end
+
+    AN --> MG
+
+    subgraph ToolSuite["Sandboxed Tool Suite"]
+        FS_TOOLS["Filesystem Tools<br/><code>src/agent/tools/filesystem.ts</code>"]
+        TODO["write_todos<br/><code>src/agent/tools/todos.ts</code>"]
+        DELEGATE["delegate_task<br/><code>src/agent/tools/subagent.ts</code>"]
+
+        LF["list_files"]
+        WF["write_file"]
+        RF["read_file"]
+        GS["grep_search"]
+
+        FS_TOOLS --- LF
+        FS_TOOLS --- WF
+        FS_TOOLS --- RF
+        FS_TOOLS --- GS
+    end
+
+    TN --> FS_TOOLS
+    TN --> TODO
+    TN --> DELEGATE
+
+    subgraph Security["Sandbox Security"]
+        SEC["resolveSecurePath<br/><code>src/agent/security.ts</code>"]
+        WS["Workspace Dir<br/>&lpar;sandboxed boundary&rpar;"]
+        SEC --> WS
+    end
+
+    FS_TOOLS --> SEC
+
+    subgraph SubagentExec["Ephemeral Subagent"]
+        SA["Subagent Loop<br/>&lpar;up to 5 steps&rpar;"]
+        SA_TOOLS["Base Tools<br/>&lpar;no delegate_task&rpar;"]
+        SA --> SA_TOOLS
+    end
+
+    DELEGATE --> SA
+
+    %% Styling
+    classDef core fill:#1a1a2e,stroke:#e94560,color:#fff
+    classDef channel fill:#0f3460,stroke:#16213e,color:#fff
+    classDef persistence fill:#1b4332,stroke:#2d6a4f,color:#fff
+    classDef tools fill:#3d0066,stroke:#6a0dad,color:#fff
+    classDef security fill:#7b2d26,stroke:#c0392b,color:#fff
+    classDef gateway fill:#1c3879,stroke:#2d6da5,color:#fff
+
+    class AgentLoop,LangGraph,MN,AN,TN,SC,FIN core
+    class TG,CM,OOB,MDV2,Draft,Recovery channel
+    class FCS,CP,CEM,AGENTS,PREFS persistence
+    class FS_TOOLS,TODO,DELEGATE,LF,WF,RF,GS,SA,SA_TOOLS tools
+    class SEC,WS security
+    class MG,Ollama,OpenAI,Gemini gateway
+```
+
+---
+
 ## 🚀 Intentional Features & Architecture Tree
 
 ### 🤖 Agent Loop & Orchestration
-* **Multi-Iteration Prompt Loop** (`src/agent/loop.ts`)
-  + Limits execution up to a configured `max_iterations` ceiling (default: 15) to prevent infinite billing or execution loops.
-  + Resolves dynamic prompt instructions by parsing `AGENTS.md` in the workspace and `preferences.md` from the global config root.
-  + Orchestrates unified LangChain client setups binding filesystem, todo, and planning tools.
+* **Compiled LangGraph Architecture** (`src/agent/loop.ts` & `src/agent/nodes.ts` & `src/agent/state.ts`)
+  + Uses a compiled `StateGraph` consisting of distinct nodes:
+    - **`memoryNode`**: Loads global memory preferences (`preferences.md`) and workspace instructions (`AGENTS.md`) and attaches them to `SystemMessage`.
+    - **`agentNode`**: Bound with dynamic sandboxed tools and streams token results in real time.
+    - **`toolsNode`**: Runs filesystems and todos tools sequentially, emitting out-of-band status cues to the bus.
+    - **`shouldContinue`**: Conditional edge router mapping LLM tool invocation triggers.
+  + Employs declarative LangGraph states utilizing `messages`, `workspaceDir`, and `chatId` state annotations.
 * **Universal Model Gateway Routing** (`src/agent/models.ts`)
   + Standardizes model configurations to LangChain's universal `initChatModel` router.
   + Dynamically normalizes model names (e.g. converting custom prefix styles like `google_genai:` to standard provider formats).
@@ -18,14 +171,25 @@ This document lists the features intentionally implemented in the `miniclaw` ass
     - **Ollama**: Connects to local/cloud services via custom `baseUrl` matching `OLLAMA_API_URL`.
     - **OpenAI**: Configures base URLs matching `OPENAI_API_BASE` for custom gateway and proxy routes.
     - **Google GenAI**: Configures security API keys and turns on advanced settings like `reasoningEffort: "medium"` for Gemini models.
-* **Unified Reasoner & Real-time Stream Parser** (`src/agent/loop.ts` & `src/utils/think.ts`)
+* **Unified Reasoner & Real-time Stream Parser** (`src/agent/loop.ts` & `src/agent/nodes.ts`)
   + Integrates `IncrementalThinkExtractor` to dynamically isolate thinking thoughts enclosed in `<think>...</think>` blocks.
   + Streams reasoning outputs instantly as `_reasoning_delta` chunks.
   + Shuts reasoning blocks using `_reasoning_end` and transitions seamlessly into standard response streaming via `_stream_delta`.
   + Persists the full accumulated response in the history buffer even if the stream is closed prematurely or aborted.
-* **Fail-Safe Fallback Invocation** (`src/agent/loop.ts`)
+* **Ephemeral Subagent Tool Task Guard** (`src/agent/tools/subagent.ts`)
+  + Spawns ephemeral, autonomous subagents for deep research and heavy file manipulation tasks.
+  + Restricts recursive subagent spawning by filtering out the `delegate_task` tool from the subagent toolsets.
+* **Fail-Safe Fallback Invocation** (`src/agent/nodes.ts`)
   + Automatically catches any errors during stream initialization.
   + Gracefully falls back to a clean, non-streaming `modelWithTools.invoke` execution path to maintain agent responsiveness.
+
+---
+
+### 🔒 Store & Checkpointing
+* **Durable File Checkpointer** (`src/agent/store.ts`)
+  + Implements a custom `FileCheckpointSaver` extending `MemorySaver` to persist graph states automatically on every `put` and `putWrites` trigger.
+  + Serializes and writes thread session states directly to `<appDir>/sessions/<chatId>/checkpoint.json`.
+  + Supports transactional archivers and hard wipes for total thread control.
 
 ---
 
@@ -65,7 +229,7 @@ This document lists the features intentionally implemented in the `miniclaw` ass
 * **Premium Real-Time Stream Drafting** (`src/channels/telegram.ts`)
   + Uses custom draft parameters to stream reasoning thoughts, tool calls, and text outputs sequentially into the **exact same Telegram draft bubble**.
   + Promotes clean layout formatting by writing only the finished, consolidated message once streaming ends.
-* **Clean Tool Calling Hints** (`src/agent/loop.ts`)
+* **Clean Tool Calling Hints** (`src/agent/nodes.ts` & `src/agent/loop.ts`)
   + Formats tool calling cues (`⚙️ Calling list_files`) directly in the draft bubble.
   + Removes `reply_to` and `metadata.reply_to` headers from the tool cue events, ensuring intermediate execution activity does **not** create redundant user-reply badges.
   + Retains `reply_to` on final response publishing so the actual text replies directly to the original user message.
@@ -82,9 +246,9 @@ This document lists the features intentionally implemented in the `miniclaw` ass
   + Registers commands natively with the Telegram Client UI.
   + **Command Actions**:
     - **`/stop`**: Sends an instant `AbortSignal` to cancel current active LLM runs and save partial history.
-    - **`/new`**: Cancels active executions, archives the active history file with a timestamp tag, and clears the context for a clean session.
-    - **`/clear`**: Cancels active runs and deletes the active session history file (`history.jsonl`) entirely.
-    - **`/status`**: Prints rich system information (current model, workspace paths, active session message counts, active/idle state) in MarkdownV2.
+    - **`/new`**: Cancels active executions and archives the active checkpoint.json file with a timestamp tag.
+    - **`/clear`**: Cancels active runs and wipes the active session checkpoint completely.
+    - **`/status`**: Prints rich system information (current model, workspace paths, active session message counts parsed from checkpoint, active/idle state) in MarkdownV2.
     - **`/help` / `/start`**: Renders a premium welcome screen and native commands table.
 
 ---

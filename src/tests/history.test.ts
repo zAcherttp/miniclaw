@@ -7,7 +7,8 @@ import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 const tempHome = path.resolve(__dirname, "tmp-home");
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
-import { ContextEngineeringManager, SessionHistory } from "../agent/history";
+import { ContextEngineeringManager } from "../agent/history";
+import { FileCheckpointSaver } from "../agent/store";
 
 describe("Thread History & Context Engineering Manager", () => {
 	const chatId = "test-chat-123";
@@ -24,26 +25,63 @@ describe("Thread History & Context Engineering Manager", () => {
 		vi.restoreAllMocks();
 	});
 
-	describe("SessionHistory (JSONL history tracking)", () => {
-		it("should return empty history if thread is new", async () => {
-			const history = new SessionHistory(chatId);
-			const logs = await history.loadHistory();
-			expect(logs).toEqual([]);
+	describe("FileCheckpointSaver (LangGraph persistence)", () => {
+		it("should start with empty storage if no checkpoint exists", async () => {
+			const checkpointer = new FileCheckpointSaver(chatId);
+			await checkpointer.load();
+			expect(checkpointer.storage).toEqual({});
 		});
 
-		it("should append and load chat messages correctly", async () => {
-			const history = new SessionHistory(chatId);
-			await history.appendMessage("user", "Hello assistant");
-			await history.appendMessage("assistant", "Hello human, how can I help?");
+		it("should save and load checkpoints correctly", async () => {
+			const checkpointer = new FileCheckpointSaver(chatId);
+			await checkpointer.load();
 
-			const logs = await history.loadHistory();
-			expect(logs.length).toBe(2);
+			// Mock placing a value in storage
+			// biome-ignore lint/suspicious/noExplicitAny: Test mock - intentionally setting MemorySaver internals
+			checkpointer.storage = { "some-key": { checkpoint: "data" } } as any;
+			await checkpointer.save();
 
-			expect(logs[0].constructor.name).toBe("HumanMessage");
-			expect(logs[0].content).toBe("Hello assistant");
+			const reloadCheckpointer = new FileCheckpointSaver(chatId);
+			await reloadCheckpointer.load();
+			expect(reloadCheckpointer.storage).toEqual({
+				"some-key": { checkpoint: "data" },
+			});
+		});
 
-			expect(logs[1].constructor.name).toBe("AIMessage");
-			expect(logs[1].content).toBe("Hello human, how can I help?");
+		it("should archive checkpoint file correctly", async () => {
+			const checkpointer = new FileCheckpointSaver(chatId);
+			// biome-ignore lint/suspicious/noExplicitAny: Test mock - intentionally setting MemorySaver internals
+			checkpointer.storage = { "some-key": { checkpoint: "data" } } as any;
+			await checkpointer.save();
+
+			await checkpointer.archive();
+			expect(checkpointer.storage).toEqual({});
+
+			const reloadCheckpointer = new FileCheckpointSaver(chatId);
+			await reloadCheckpointer.load();
+			expect(reloadCheckpointer.storage).toEqual({});
+
+			// Check that an archived file exists in the directory
+			const sessionsDir = path.join(tempHome, ".miniclaw", "sessions", chatId);
+			const files = await fs.readdir(sessionsDir);
+			const archiveFile = files.find(
+				(f) => f.startsWith("checkpoint_") && f.endsWith(".json"),
+			);
+			expect(archiveFile).toBeDefined();
+		});
+
+		it("should clear checkpoint file correctly", async () => {
+			const checkpointer = new FileCheckpointSaver(chatId);
+			// biome-ignore lint/suspicious/noExplicitAny: Test mock - intentionally setting MemorySaver internals
+			checkpointer.storage = { "some-key": { checkpoint: "data" } } as any;
+			await checkpointer.save();
+
+			await checkpointer.clear();
+			expect(checkpointer.storage).toEqual({});
+
+			const reloadCheckpointer = new FileCheckpointSaver(chatId);
+			await reloadCheckpointer.load();
+			expect(reloadCheckpointer.storage).toEqual({});
 		});
 	});
 

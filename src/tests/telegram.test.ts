@@ -485,14 +485,11 @@ describe("Telegram Channel Integration & Recovery", () => {
 			const { channel, bot } = setupChannel(["*"], mockAgentLoop);
 			await channel.start();
 
-			// Pre-create active history file
+			// Pre-create active checkpoint file
 			const sessionsDir = path.join(getAppDir(), "sessions", "12345");
 			fs.mkdirSync(sessionsDir, { recursive: true });
-			const historyFile = path.join(sessionsDir, "history.jsonl");
-			fs.writeFileSync(
-				historyFile,
-				`${JSON.stringify({ role: "user", content: "hello" })}\n`,
-			);
+			const checkpointFile = path.join(sessionsDir, "checkpoint.json");
+			fs.writeFileSync(checkpointFile, JSON.stringify({ storage: { x: 1 } }));
 
 			const apiCalls: { method: string; payload: Record<string, unknown> }[] =
 				[];
@@ -528,18 +525,18 @@ describe("Telegram Channel Integration & Recovery", () => {
 			expect(apiCalls[0].method).toBe("sendMessage");
 			expect(apiCalls[0].payload.text).toContain("New session started");
 
-			// Check that history.jsonl is renamed to history_timestamp.jsonl
-			expect(fs.existsSync(historyFile)).toBe(false);
+			// Check that checkpoint.json is renamed to checkpoint_timestamp.json
+			expect(fs.existsSync(checkpointFile)).toBe(false);
 			const files = fs.readdirSync(sessionsDir);
 			const archived = files.find(
-				(f) => f.startsWith("history_") && f.endsWith(".jsonl"),
+				(f) => f.startsWith("checkpoint_") && f.endsWith(".json"),
 			);
 			expect(archived).toBeDefined();
 
 			await channel.stop();
 		});
 
-		it("should intercept /clear, cancel active executions, and delete session folder completely", async () => {
+		it("should intercept /clear, cancel active executions, and delete checkpoint file completely", async () => {
 			const mockAgentLoop = {
 				cancelChat: vi.fn().mockResolvedValue(true),
 				isChatActive: vi.fn().mockReturnValue(false),
@@ -551,8 +548,11 @@ describe("Telegram Channel Integration & Recovery", () => {
 			// Pre-create session dir and some files
 			const sessionsDir = path.join(getAppDir(), "sessions", "12345");
 			fs.mkdirSync(sessionsDir, { recursive: true });
-			fs.writeFileSync(path.join(sessionsDir, "history.jsonl"), "log\n");
-			fs.writeFileSync(path.join(sessionsDir, "history_123.jsonl"), "oldlog\n");
+			fs.writeFileSync(path.join(sessionsDir, "checkpoint.json"), "log\n");
+			fs.writeFileSync(
+				path.join(sessionsDir, "checkpoint_123.json"),
+				"oldlog\n",
+			);
 
 			const apiCalls: { method: string; payload: Record<string, unknown> }[] =
 				[];
@@ -590,12 +590,12 @@ describe("Telegram Channel Integration & Recovery", () => {
 				"Session history wiped completely",
 			);
 
-			// Check that active session history file (history.jsonl) is gone
-			expect(fs.existsSync(path.join(sessionsDir, "history.jsonl"))).toBe(
+			// Check that active session checkpoint file (checkpoint.json) is gone
+			expect(fs.existsSync(path.join(sessionsDir, "checkpoint.json"))).toBe(
 				false,
 			);
-			// Check that archived history file (history_123.jsonl) is still intact
-			expect(fs.existsSync(path.join(sessionsDir, "history_123.jsonl"))).toBe(
+			// Check that archived checkpoint file (checkpoint_123.json) is still intact
+			expect(fs.existsSync(path.join(sessionsDir, "checkpoint_123.json"))).toBe(
 				true,
 			);
 

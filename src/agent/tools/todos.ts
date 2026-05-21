@@ -8,7 +8,13 @@ const TodoItemSchema = z.object({
 	text: z
 		.string()
 		.describe("Clear, actionable description of what this subtask does"),
-	status: z.enum(["pending", "done"]).describe("Status of the subtask"),
+	status: z
+		.enum(["pending", "done", "blocked", "cancelled"])
+		.describe("Status of the subtask"),
+	note: z
+		.string()
+		.optional()
+		.describe("Optional update note or block reason for this task"),
 });
 
 export const createWriteTodosTool = (workspaceDir: string) => {

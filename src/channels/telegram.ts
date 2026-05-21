@@ -1,8 +1,9 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Bot } from "grammy";
-import { SessionHistory } from "@/agent/history";
 import type { AgentLoop } from "@/agent/loop";
+import { getSessionMessages } from "@/agent/loop";
+import { FileCheckpointSaver } from "@/agent/store";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getAppDir, getMediaDir, getWorkspaceDir } from "@/config/paths";
@@ -88,8 +89,8 @@ export class TelegramChannel extends Channel {
 					if (this.agentLoop) {
 						await this.agentLoop.cancelChat(chatId);
 					}
-					const history = new SessionHistory(chatId);
-					await history.archiveHistory();
+					const checkpointer = new FileCheckpointSaver(chatId);
+					await checkpointer.archive();
 					await ctx.reply(
 						"New session started. Active history archived for periodic daily summary and consolidation.",
 					);
@@ -100,15 +101,14 @@ export class TelegramChannel extends Channel {
 					if (this.agentLoop) {
 						await this.agentLoop.cancelChat(chatId);
 					}
-					const history = new SessionHistory(chatId);
-					await history.clearHistory();
+					const checkpointer = new FileCheckpointSaver(chatId);
+					await checkpointer.clear();
 					await ctx.reply("Session history wiped completely.");
 					return;
 				}
 
 				if (command === "/status") {
-					const history = new SessionHistory(chatId);
-					const messages = await history.loadHistory(1000); // load all active messages for count
+					const messages = await getSessionMessages(chatId); // load all active messages from checkpoint
 					const isActive = this.agentLoop
 						? this.agentLoop.isChatActive(chatId)
 						: false;
@@ -555,7 +555,7 @@ export function toMarkdownV2(text: string): string {
 					lang = block.substring(0, newlineIdx).trim();
 					code = block.substring(newlineIdx + 1);
 				}
-				result += "```" + lang + "\n" + escapePreCode(code) + "```";
+				result += `\`\`\`${lang}\n${escapePreCode(code)}\`\`\``;
 				i = end + 3;
 				continue;
 			}
@@ -566,7 +566,7 @@ export function toMarkdownV2(text: string): string {
 			const end = text.indexOf("`", i + 1);
 			if (end !== -1) {
 				const code = text.substring(i + 1, end);
-				result += "`" + escapeInlineCode(code) + "`";
+				result += `\`${escapeInlineCode(code)}\``;
 				i = end + 1;
 				continue;
 			}
@@ -578,7 +578,7 @@ export function toMarkdownV2(text: string): string {
 			if (end !== -1) {
 				const boldContent = text.substring(i + 2, end);
 				// Bold in MarkdownV2 is single *
-				result += "*" + toMarkdownV2(boldContent) + "*";
+				result += `*${toMarkdownV2(boldContent)}*`;
 				i = end + 2;
 				continue;
 			}
@@ -589,7 +589,7 @@ export function toMarkdownV2(text: string): string {
 			const end = text.indexOf("__", i + 2);
 			if (end !== -1) {
 				const content = text.substring(i + 2, end);
-				result += "__" + toMarkdownV2(content) + "__";
+				result += `__${toMarkdownV2(content)}__`;
 				i = end + 2;
 				continue;
 			}
@@ -608,7 +608,7 @@ export function toMarkdownV2(text: string): string {
 			if (end !== -1) {
 				const italicContent = text.substring(i + 1, end);
 				// Italic in MarkdownV2 is single _
-				result += "_" + toMarkdownV2(italicContent) + "_";
+				result += `_${toMarkdownV2(italicContent)}_`;
 				i = end + 1;
 				continue;
 			}
@@ -619,7 +619,7 @@ export function toMarkdownV2(text: string): string {
 			const end = text.indexOf("_", i + 1);
 			if (end !== -1) {
 				const italicContent = text.substring(i + 1, end);
-				result += "_" + toMarkdownV2(italicContent) + "_";
+				result += `_${toMarkdownV2(italicContent)}_`;
 				i = end + 1;
 				continue;
 			}
@@ -630,7 +630,7 @@ export function toMarkdownV2(text: string): string {
 			const end = text.indexOf("~", i + 1);
 			if (end !== -1) {
 				const strikethroughContent = text.substring(i + 1, end);
-				result += "~" + toMarkdownV2(strikethroughContent) + "~";
+				result += `~${toMarkdownV2(strikethroughContent)}~`;
 				i = end + 1;
 				continue;
 			}
@@ -644,7 +644,7 @@ export function toMarkdownV2(text: string): string {
 				if (closeParen !== -1) {
 					const label = text.substring(i + 1, closeBracket);
 					const url = text.substring(closeBracket + 2, closeParen);
-					result += "[" + toMarkdownV2(label) + "](" + escapeUrl(url) + ")";
+					result += `[${toMarkdownV2(label)}](${escapeUrl(url)})`;
 					i = closeParen + 1;
 					continue;
 				}
