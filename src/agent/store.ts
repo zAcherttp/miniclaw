@@ -24,7 +24,7 @@ export interface SerializedMessage {
 
 export function serializeMessage(message: BaseMessage): SerializedMessage {
 	const res: SerializedMessage = {
-		type: message._getType(),
+		type: message.type,
 		content: message.content,
 	};
 	if (message.name) res.name = message.name;

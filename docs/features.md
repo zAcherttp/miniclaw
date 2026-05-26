@@ -105,7 +105,7 @@ graph TB
     subgraph ToolSuite["Sandboxed Tool Suite"]
         FS_TOOLS["Filesystem Tools<br/><code>src/agent/tools/filesystem.ts</code>"]
         TODO["write_todos<br/><code>src/agent/tools/todos.ts</code>"]
-        DELEGATE["delegate_task<br/><code>src/agent/tools/subagent.ts</code>"]
+        EXEC["execute<br/><code>src/agent/tools/execute.ts</code>"]
 
         LF["list_files"]
         WF["write_file"]
@@ -120,7 +120,7 @@ graph TB
 
     ToolExec --> FS_TOOLS
     ToolExec --> TODO
-    ToolExec --> DELEGATE
+    ToolExec --> EXEC
 
     subgraph Security["Sandbox Security"]
         SEC["resolveSecurePath<br/><code>src/agent/security.ts</code>"]
@@ -129,14 +129,6 @@ graph TB
     end
 
     FS_TOOLS --> SEC
-
-    subgraph SubagentExec["Ephemeral Subagent"]
-        SA["Subagent Loop<br/>&lpar;up to 5 steps&rpar;"]
-        SA_TOOLS["Base Tools<br/>&lpar;no delegate_task&rpar;"]
-        SA --> SA_TOOLS
-    end
-
-    DELEGATE --> SA
 
     %% Styling
     classDef core fill:#1a1a2e,stroke:#e94560,color:#fff
@@ -175,9 +167,6 @@ graph TB
   + Streams reasoning outputs instantly as `_reasoning_delta` chunks.
   + Shuts reasoning blocks using `_reasoning_end` and transitions seamlessly into standard response streaming via `_stream_delta`.
   + Persists the full accumulated response in the history buffer even if the stream is closed prematurely or aborted.
-* **Ephemeral Subagent Tool Task Guard** (`src/agent/tools/subagent.ts`)
-  + Spawns ephemeral, autonomous subagents for deep research and heavy file manipulation tasks.
-  + Restricts recursive subagent spawning by filtering out the `delegate_task` tool from the subagent toolsets.
 * **Fail-Safe Fallback Invocation** (`src/agent/loop.ts`)
   + Automatically catches any errors during stream initialization.
   + Gracefully falls back to a clean, non-streaming `modelWithTools.invoke` execution path to maintain agent responsiveness.
@@ -225,6 +214,38 @@ graph TB
   + Skips heavy development and control folders like `node_modules`, `.git`, and `dist`.
 * **`write_todos`** (`src/agent/tools/todos.ts`)
   + Tracks and updates active plan checklists inside `.todos.json` in the workspace root.
+* **`execute`** (`src/agent/tools/execute.ts`)
+  + Enables secure execution of whitelisted shell commands in the workspace directory with robust sandboxed guards.
+  - **Internal Security Validation**: Uses custom tokenizers to split command chains (`&&`, `;`, `||`, `|`), resolves environment variables, and validates every command segment against a strict binary whitelist: `npm`, `pnpm`, `node`, `vitest`, `git`, `python`, `python3`, `npx`, `tsc`, `biome`.
+  - **Path Sandboxing**: Rejects path traversal sequences (`..`) in command arguments to prevent host boundary escapes.
+  - **Smart Timeout Enforcement**: Automatically monitors and terminates processes exceeding a configurable timeout limit (defaults to 30.0s) and terminates hung process trees to prevent wait-blocking under Windows.
+  - **Diagnostic Stderr Prefixing**: Prefixes all standard error lines with `[stderr] ` to allow the agent to easily identify and diagnose stack traces/compilation issues.
+  - **Output Capping**: Caps combined output at 30,000 characters (~7,500 tokens) to protect local model context boundaries and appends truncation alerts.
+  - **Visual Sandbox Pipeline**:
+    ```mermaid
+    graph TD
+        subgraph Input_Processing["1. Input Parsing & Command Validation"]
+            A["Agent issues execute(command)"] --> B["Command Tokenizer<br/>(Split segments by &&, ||, ;, |)"]
+            B --> C["Verify Binaries against Whitelist<br/>(npm, pnpm, node, vitest, git, python, npx, tsc, biome)"]
+            C -->|Failed| D["Abort: Security Violation Error"]
+            C -->|Passed| E["Path Traversal Inspection<br/>(Block '..', check target bounds)"]
+            E -->|Failed| D
+            E -->|Passed| F["Secure Command Confirmed"]
+        end
+
+        subgraph Process_Execution["2. Sandboxed Process Execution"]
+            F --> G["Spawn Process via child_process.spawn()"]
+            G -->|Set CWD| H["CWD = active workspaceDir<br/>(Loaded dynamically via LangGraph config)"]
+            G -->|Enforce Timeout| I["30-second Timer Guard"]
+            I -->|Exceeded| J["Force Terminate (SIGTERM/SIGKILL)<br/>Return Timeout Error"]
+        end
+
+        subgraph Output_Sanitization["3. Output Handling & Truncation"]
+            G -->|Read Stdout / Stderr| K["Combine Streams & Enforce 30KB Buffer Cap"]
+            K -->|Cap Exceeded| L["Truncate Output & Append Notice"]
+            K -->|Completed| M["Format with Exit Code & Return to Agent"]
+        end
+    ```
 
 ---
 
