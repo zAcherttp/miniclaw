@@ -3,6 +3,36 @@ import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { resolveSecurePath } from "../security";
 
+/**
+ * ============================================================================
+ * SECURE TODO TRACKING TOOL DOCUMENTATION
+ * ============================================================================
+ * This tool allows the agent to create and update a stateful checklist (.todos.json)
+ * inside the active workspace directory to plan and track execution steps.
+ *
+ * Architecture and Runtime Guards:
+ *
+ * ```mermaid
+ * graph TD
+ *     subgraph Input_Validation["1. Input Parsing & Validation"]
+ *         A["Agent issues write_todos(todos)"] --> B["Validate Todo Array Structure<br/>(id, text, status, note)"]
+ *     end
+ *
+ *     subgraph Secure_Resolution["2. Safe Path Resolution"]
+ *         B --> C["resolveSecurePath(workspaceDir, '.todos.json')"]
+ *         C -->|Security Violations| D["Abort: Throw PathTraversalError"]
+ *         C -->|Secure Path Verified| E[".todos.json absolute target resolved"]
+ *     end
+ *
+ *     subgraph File_Writing["3. Stateful Disk Writing"]
+ *         E --> F["JSON.stringify(todos, null, 2)"]
+ *         F --> G["fs.writeFile() to workspace root"]
+ *         G --> H["Return Successful Confirmation to Loop"]
+ *     end
+ * ```
+ * ============================================================================
+ */
+
 const TodoItemSchema = z.object({
 	id: z.string().describe("Unique identifier for the subtask"),
 	text: z

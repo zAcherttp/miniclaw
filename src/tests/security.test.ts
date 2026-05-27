@@ -1,9 +1,17 @@
+import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
-import { describe, expect, it } from "vitest";
+import { afterAll, describe, expect, it } from "vitest";
 import { PathTraversalError, resolveSecurePath } from "../agent/security";
 
 describe("Path Sandboxing Primitive", () => {
-	const workspaceDir = path.resolve("e:/Web/miniclaw");
+	const workspaceDir = fs.mkdtempSync(
+		path.join(os.tmpdir(), "miniclaw-security-"),
+	);
+
+	afterAll(() => {
+		fs.rmSync(workspaceDir, { recursive: true, force: true });
+	});
 
 	it("should resolve safe relative paths within the workspace", () => {
 		const safePath = "src/agent/loop.ts";
@@ -28,7 +36,7 @@ describe("Path Sandboxing Primitive", () => {
 	});
 
 	it("should reject absolute paths that escape the workspace", () => {
-		const unsafePath = "C:/Users/Salad/secrets.txt";
+		const unsafePath = path.resolve(workspaceDir, "..", "secrets.txt");
 		expect(() => resolveSecurePath(workspaceDir, unsafePath)).toThrow(
 			PathTraversalError,
 		);

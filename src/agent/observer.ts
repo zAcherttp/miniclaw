@@ -154,6 +154,15 @@ export class AgentEventObserver {
 		return accumulated;
 	}
 
+	async publishNotification(content: string) {
+		await this.bus.publishOutbound({
+			channel: this.channel,
+			chat_id: this.chatId,
+			content,
+			reply_to: this.replyTo,
+		});
+	}
+
 	async publishToolStart(toolNames: string[]) {
 		const hintText = `⚙️ Calling ${toolNames.join(", ")}\n`;
 		await this.bus.publishOutbound({

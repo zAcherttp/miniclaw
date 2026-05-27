@@ -1,19 +1,69 @@
-import { SystemMessage, ToolMessage } from "@langchain/core/messages";
+import {
+	type BaseMessage,
+	SystemMessage,
+	ToolMessage,
+} from "@langchain/core/messages";
 import {
 	Annotation,
 	END,
 	MessagesAnnotation,
+	REMOVE_ALL_MESSAGES,
 	START,
 	StateGraph,
 } from "@langchain/langgraph";
+import { logger } from "@/utils/logger";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
+import { MemoryManager } from "./memory";
 import { FileCheckpointSaver } from "./store";
+import { estimateMessagesTokens, formatTokens } from "./tokenizer";
 
 // Define the clean declarative Agent State using MessagesAnnotation
 export const AgentState = Annotation.Root({
 	...MessagesAnnotation.spec,
 });
+
+/**
+ * Simple helper to apply middleware message updates (resolving RemoveMessage and new ones).
+ */
+type BeforeModelMiddleware = (
+	input: { messages: BaseMessage[] },
+	options: { context: Record<string, unknown> },
+) => Promise<{ messages?: BaseMessage[] } | undefined>;
+
+function isBeforeModelMiddleware(
+	middleware: unknown,
+): middleware is BeforeModelMiddleware {
+	return typeof middleware === "function";
+}
+
+function getRemoveMessageId(message: BaseMessage): string | null {
+	if (message.type !== "remove") return null;
+	const id = (message as { id?: unknown }).id;
+	return typeof id === "string" ? id : null;
+}
+
+function applyMessageUpdates(
+	current: BaseMessage[],
+	updates: BaseMessage[],
+): BaseMessage[] {
+	let result = [...current];
+	for (const msg of updates) {
+		if (msg.type === "remove") {
+			const removeId = getRemoveMessageId(msg);
+			if (removeId) {
+				if (removeId === REMOVE_ALL_MESSAGES) {
+					result = [];
+				} else {
+					result = result.filter((m) => m.id !== removeId);
+				}
+			}
+		} else {
+			result.push(msg);
+		}
+	}
+	return result;
+}
 
 /**
  * Agent Node: Resolves dynamic context prompts, streams tokens and reasoning via
@@ -28,18 +78,97 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 		chatId,
 		observer,
 		systemPrompt: customSystemPrompt,
+		appConfig,
+		agent,
 	} = config?.configurable || {};
 
 	// 1. Load latest memory/context guidelines dynamically before model call
 	const memoryContext = workspaceDir
 		? await ContextEngineeringManager.loadMemoryFiles(workspaceDir)
 		: "";
+
+	// 2. Fetch and inject User Profile & Goals memory dynamically
+	let memoryPrompt = "";
+	if (appConfig) {
+		try {
+			const memoryManager = MemoryManager.getInstance(appConfig);
+			const profile = await memoryManager.getProfile();
+			const profileDetails: string[] = [];
+
+			if (profile.username)
+				profileDetails.push(`Username: ${profile.username}`);
+			if (profile.timezone)
+				profileDetails.push(`User Timezone: ${profile.timezone}`);
+			if (profile.traits && profile.traits.length > 0) {
+				profileDetails.push(
+					`User Traits & Preferences:\n${profile.traits.map((t) => `- ${t}`).join("\n")}`,
+				);
+			}
+			if (profile.activeGoals && profile.activeGoals.length > 0) {
+				profileDetails.push(
+					`User Active Goals:\n${profile.activeGoals.map((g) => `- ${g}`).join("\n")}`,
+				);
+			}
+
+			if (profileDetails.length > 0) {
+				memoryPrompt = `\n\n## USER MEMORY (Long-Term Memory State):\n${profileDetails.join("\n\n")}`;
+			}
+		} catch (err) {
+			logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
+		}
+	}
+
 	const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-	const systemPrompt = basePrompt + (memoryContext ? `\n${memoryContext}` : "");
+	const systemPrompt =
+		basePrompt +
+		(memoryContext ? `\n${memoryContext}` : "") +
+		(memoryPrompt ? `\n${memoryPrompt}` : "");
+
+	// 3. Process built-in middleware (e.g. short-term summarization compaction)
+	let middlewareUpdates: BaseMessage[] | null = null;
+	let messages = [...state.messages];
+
+	const triggerTokens = appConfig?.agent?.compaction_trigger_tokens ?? 220000;
+
+	if (agent?.options && Array.isArray(agent.options.middleware)) {
+		for (const m of agent.options.middleware) {
+			if (isBeforeModelMiddleware(m.beforeModel)) {
+				try {
+					const tokensBefore = estimateMessagesTokens(messages);
+					const updates = await m.beforeModel({ messages }, { context: {} });
+					if (
+						updates &&
+						Array.isArray(updates.messages) &&
+						updates.messages.length > 0
+					) {
+						middlewareUpdates = updates.messages;
+						messages = applyMessageUpdates(messages, updates.messages);
+						const tokensAfter = estimateMessagesTokens(messages);
+
+						// Save compacted messages to the file checkpointer immediately
+						if (chatId) {
+							const checkpointer = new FileCheckpointSaver(chatId);
+							checkpointer.messages = messages;
+							await checkpointer.save();
+						}
+
+						// Notify the user via the message bus
+						if (observer) {
+							await observer.publishNotification(
+								`conversation auto compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`,
+							);
+						}
+					}
+				} catch (err) {
+					logger.error(err, `[AgentNode] Failed to run middleware ${m.name}`);
+				}
+			}
+		}
+	}
 
 	const activeMessages = [
 		new SystemMessage(systemPrompt),
-		...state.messages.filter((m) => m.type !== "system"),
+		...messages.filter((m) => m.type !== "system"),
 	];
 
 	// biome-ignore lint/suspicious/noExplicitAny: bindTools exists at runtime on standard chat models
@@ -70,16 +199,18 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 		throw new Error("AgentNode: Generated model response is empty.");
 	}
 
-	// 3. Persist model output to the File Checkpoint store
+	// 4. Persist model output to the File Checkpoint store
 	if (chatId) {
 		const checkpointer = new FileCheckpointSaver(chatId);
 		await checkpointer.load();
-		checkpointer.messages = [...state.messages, accumulatedMessage];
+		checkpointer.messages = [...messages, accumulatedMessage];
 		await checkpointer.save();
 	}
 
 	return {
-		messages: [accumulatedMessage],
+		messages: middlewareUpdates
+			? [...middlewareUpdates, accumulatedMessage]
+			: [accumulatedMessage],
 	};
 }
 

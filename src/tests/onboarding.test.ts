@@ -4,7 +4,7 @@ import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Spy on os.homedir before importing other modules
-const tempHome = path.join(__dirname, "temp_home");
+const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-onboarding-"));
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
 import { runOnboarding } from "@/cli/commands";
@@ -29,7 +29,7 @@ describe("CLI Onboarding Flow", () => {
 	it("should initialize default config and env files in the app directory", () => {
 		// Verify no config or env exists initially
 		const appDir = getAppDir();
-		expect(appDir).toContain("temp_home");
+		expect(appDir).toContain(tempHome);
 		const configPath = getConfigPath();
 		const envPath = getEnvPath();
 

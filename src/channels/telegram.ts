@@ -2,8 +2,10 @@ import fs from "node:fs";
 import path from "node:path";
 import { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
-import { getSessionMessages } from "@/agent/loop";
+import { forceCompactMessages, getSessionMessages } from "@/agent/loop";
+import { MemoryManager } from "@/agent/memory";
 import { FileCheckpointSaver } from "@/agent/store";
+import { estimateMessagesTokens, formatTokens } from "@/agent/tokenizer";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getAppDir, getMediaDir, getWorkspaceDir } from "@/config/paths";
@@ -72,24 +74,62 @@ export class TelegramChannel extends Channel {
 				const chatId = ctx.chat.id.toString();
 
 				if (command === "/stop") {
+					logger.info(`[Telegram] /stop command received for chat ${chatId}`);
 					if (this.agentLoop) {
 						const cancelled = await this.agentLoop.cancelChat(chatId);
+						logger.info(
+							`[Telegram] /stop execution cancel status: cancelled=${cancelled}`,
+						);
 						if (cancelled) {
 							await ctx.reply("Stopped active execution.");
 						} else {
 							await ctx.reply("No active task is running for this chat.");
 						}
 					} else {
+						logger.warn(
+							`[Telegram] /stop skipped: agentLoop is not available.`,
+						);
 						await ctx.reply("Agent loop not available.");
 					}
 					return;
 				}
 
 				if (command === "/new") {
+					logger.info(`[Telegram] /new command received for chat ${chatId}`);
 					if (this.agentLoop) {
 						await this.agentLoop.cancelChat(chatId);
 					}
 					const checkpointer = new FileCheckpointSaver(chatId);
+					await checkpointer.load();
+					logger.info(
+						`[Telegram] Loaded checkpoint messages for /new: count=${checkpointer.messages.length}, chatId=${chatId}`,
+					);
+					logger.info(
+						`[Telegram] agentLoop present: ${!!this.agentLoop}, config present: ${!!this.agentLoop?.config}`,
+					);
+
+					// Consolidation: Run session auto-summarization before archiving
+					if (this.agentLoop?.config && checkpointer.messages.length > 0) {
+						try {
+							logger.info(
+								`[Telegram] Triggering memory consolidation with ${checkpointer.messages.length} messages.`,
+							);
+							const memoryManager = MemoryManager.getInstance(
+								this.agentLoop.config,
+							);
+							await memoryManager.runDailySummarization(checkpointer.messages);
+						} catch (err) {
+							logger.error(
+								err,
+								"[Telegram] Failed to run summarization before session archive",
+							);
+						}
+					} else {
+						logger.info(
+							`[Telegram] Skipping consolidation. Condition check: agentLoop=${!!this.agentLoop}, config=${!!this.agentLoop?.config}, messagesCount=${checkpointer.messages.length}`,
+						);
+					}
+
 					await checkpointer.archive();
 					await ctx.reply(
 						"New session started. Active history archived for periodic daily summary and consolidation.",
@@ -98,16 +138,78 @@ export class TelegramChannel extends Channel {
 				}
 
 				if (command === "/clear") {
+					logger.info(`[Telegram] /clear command received for chat ${chatId}`);
 					if (this.agentLoop) {
 						await this.agentLoop.cancelChat(chatId);
 					}
 					const checkpointer = new FileCheckpointSaver(chatId);
 					await checkpointer.clear();
+					logger.info(`[Telegram] Session history wiped for chat ${chatId}`);
 					await ctx.reply("Session history wiped completely.");
 					return;
 				}
 
+				if (command === "/compact") {
+					logger.info(
+						`[Telegram] /compact command received for chat ${chatId}`,
+					);
+					if (this.agentLoop) {
+						await this.agentLoop.cancelChat(chatId);
+					}
+					const checkpointer = new FileCheckpointSaver(chatId);
+					await checkpointer.load();
+					logger.info(
+						`[Telegram] Loaded checkpoint messages for /compact: count=${checkpointer.messages.length}, chatId=${chatId}`,
+					);
+
+					if (checkpointer.messages.length === 0) {
+						logger.info(`[Telegram] /compact skipped: no messages to compact.`);
+						await ctx.reply("No messages to compact in the active session.");
+						return;
+					}
+
+					if (this.agentLoop?.config) {
+						try {
+							const tokensBefore = estimateMessagesTokens(
+								checkpointer.messages,
+							);
+							const triggerTokens =
+								this.agentLoop.config.agent.compaction_trigger_tokens ?? 220000;
+							logger.info(
+								`[Telegram] Triggering manual conversation compaction.`,
+							);
+							const compacted = await forceCompactMessages(
+								this.agentLoop.config,
+								checkpointer.messages,
+							);
+							if (compacted) {
+								checkpointer.messages = compacted;
+								await checkpointer.save();
+								const tokensAfter = estimateMessagesTokens(compacted);
+								logger.info(`[Telegram] Conversation compacted successfully.`);
+								await ctx.reply(
+									`conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`,
+								);
+							} else {
+								await ctx.reply("Failed to compact conversation.");
+							}
+						} catch (err) {
+							logger.error(err, "[Telegram] Failed to compact conversation");
+							await ctx.reply(
+								`Failed to compact conversation: ${(err as Error).message}`,
+							);
+						}
+					} else {
+						logger.warn(
+							`[Telegram] /compact skipped: agentLoop or config is not available.`,
+						);
+						await ctx.reply("Agent loop not available for compaction.");
+					}
+					return;
+				}
+
 				if (command === "/status") {
+					logger.info(`[Telegram] /status command received for chat ${chatId}`);
 					const messages = await getSessionMessages(chatId); // load all active messages from checkpoint
 					const isActive = this.agentLoop
 						? this.agentLoop.isChatActive(chatId)
@@ -120,6 +222,9 @@ export class TelegramChannel extends Channel {
 
 					const replyText = `✨ *Miniclaw Bot Status*\n\n🤖 *Active Model:* \`${activeModel}\`\n💬 *Active Message Count:* \`${messages.length}\`\n⚡ *Task Status:* \`${isActive ? "ACTIVE ⚡" : "IDLE 💤"}\`\n📁 *Workspace:* \`${workspace}\``;
 
+					logger.info(
+						`[Telegram] Status details printed: activeModel=${activeModel}, messagesCount=${messages.length}, isActive=${isActive}`,
+					);
 					await ctx.reply(toMarkdownV2(replyText), {
 						parse_mode: "MarkdownV2",
 					});
@@ -127,7 +232,10 @@ export class TelegramChannel extends Channel {
 				}
 
 				if (command === "/help" || command === "/start") {
-					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/new - Start a fresh session (archives current history)\n/clear - Wipe active session history (archives preserved)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
+					logger.info(
+						`[Telegram] ${command} command received for chat ${chatId}`,
+					);
+					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/new - Start a fresh session (archives current history)\n/clear - Wipe active session history (archives preserved)\n/compact - Compact conversation history (summarizes old messages)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
 					await ctx.reply(helpText);
 					return;
 				}
@@ -284,6 +392,10 @@ export class TelegramChannel extends Channel {
 				{
 					command: "clear",
 					description: "Wipe active session history (archives preserved)",
+				},
+				{
+					command: "compact",
+					description: "Compact active conversation history using middleware",
 				},
 				{ command: "stop", description: "Stop active running agent execution" },
 				{

@@ -15,7 +15,7 @@ import { ExecuteSecurityError, validateExecuteCommand } from "../security";
  * graph TD
  *     subgraph Input_Processing["1. Input Parsing & Command Validation"]
  *         A["Agent issues execute(command)"] --> B["Command Tokenizer<br/>(Split segments by &&, ||, ;, |)"]
- *         B --> C["Verify Binaries against Whitelist<br/>(npm, pnpm, node, vitest, git, python, npx, tsc, biome)"]
+ *         B --> C["Verify Binaries against Whitelist<br/>(None whitelisted by default)"]
  *         C -->|Failed| D["Abort: Security Violation Error"]
  *         C -->|Passed| E["Path Traversal Inspection<br/>(Block '..', check target bounds)"]
  *         E -->|Failed| D
@@ -33,6 +33,7 @@ import { ExecuteSecurityError, validateExecuteCommand } from "../security";
  *         G -->|Read Stdout / Stderr| K["Combine Streams & Enforce 30KB Buffer Cap"]
  *         K -->|Cap Exceeded| L["Truncate Output & Append Notice"]
  *         K -->|Completed| M["Format with Exit Code & Return to Agent"]
+ *         M --> N["Return Success/Failure to Loop"]
  *     end
  * ```
  * ============================================================================
@@ -40,7 +41,7 @@ import { ExecuteSecurityError, validateExecuteCommand } from "../security";
 
 export const EXECUTE_TOOL_DESCRIPTION = `Executes a shell command in the workspace directory with strict safety measures.
 
-Supported Whitelisted Binaries: npm, pnpm, node, vitest, git, python, python3, npx, tsc, biome.
+Supported Whitelisted Binaries: None allowed by default (all commands are blocked by default for security).
 
 Usage notes:
 - Running directory is strictly locked to your active workspace root.
@@ -69,7 +70,11 @@ export function createExecuteTool(
 		name: "execute",
 		description: EXECUTE_TOOL_DESCRIPTION,
 		schema: z.object({
-			command: z.string().describe("The whitelisted shell command to execute"),
+			command: z
+				.string()
+				.describe(
+					"The shell command to execute (subject to strict whitelist validation; none allowed by default)",
+				),
 		}),
 		func: async ({ command }) => {
 			try {

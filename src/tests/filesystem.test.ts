@@ -1,11 +1,12 @@
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import type { StructuredTool } from "@langchain/core/tools";
 import { afterAll, beforeAll, describe, expect, it } from "vitest";
 import { createFilesystemTools } from "../agent/tools/filesystem";
 
 describe("Secure Filesystem & Search Tools", () => {
-	const testSandbox = path.resolve(__dirname, "tmp-sandbox");
+	let testSandbox = "";
 	let readFileTool: StructuredTool;
 	let writeFileTool: StructuredTool;
 	let editFileTool: StructuredTool;
@@ -14,8 +15,9 @@ describe("Secure Filesystem & Search Tools", () => {
 
 	beforeAll(async () => {
 		// Clean and recreate sandbox directory
-		await fs.rm(testSandbox, { recursive: true, force: true });
-		await fs.mkdir(testSandbox, { recursive: true });
+		testSandbox = await fs.mkdtemp(
+			path.join(os.tmpdir(), "miniclaw-filesystem-"),
+		);
 
 		// Initialize sandboxed tools with mock sandbox root
 		const tools = createFilesystemTools(testSandbox);

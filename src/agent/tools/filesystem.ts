@@ -5,6 +5,44 @@ import { z } from "zod";
 import { PathTraversalError, resolveSecurePath } from "../security";
 
 /**
+ * ============================================================================
+ * SECURE VIRTUAL FILESYSTEM TOOLS DOCUMENTATION
+ * ============================================================================
+ * This module implements a sandboxed virtual filesystem tool suite (read_file,
+ * write_file, edit_file, list_files, grep_search) restricted strictly to
+ * the active workspace boundary.
+ *
+ * Architecture and Runtime Guards:
+ *
+ * ```mermaid
+ * graph TD
+ *     subgraph Filesystem_Input["1. Sandboxed Tool Execution Requests"]
+ *         RF["read_file(file_path, offset, limit)"]
+ *         WF["write_file(path, content)"]
+ *         EF["edit_file(file_path, old_string, new_string)"]
+ *         LF["list_files(path)"]
+ *         GS["grep_search(query, path)"]
+ *     end
+ *
+ *     subgraph Security_Primitive["2. Sandbox Security Primitive (resolveSecurePath)"]
+ *         RF & WF & EF & LF & GS -->|Resolve Paths Securely| SEC["resolveSecurePath(workspaceDir, targetPath)"]
+ *         SEC -->|Absolute workspace boundaries comparison| Check{"Path starts with absolute workspace?"}
+ *         Check -->|No: Traversal Attempt| Reject["Throw PathTraversalError<br/>(Abort & Return secure error to agent)"]
+ *         Check -->|Yes: Safe Target| Resolve["Verify & Complete secure local path target"]
+ *     end
+ *
+ *     subgraph Tool_Action_Execution["3. Secure Operations & Return Sanitization"]
+ *         Resolve -->|read_file| RunRF["Read contents cleanly<br/>- Format Unix cat -n line numbers<br/>- Fractional long lines character split<br/>- 0-indexed pagination windowing"]
+ *         Resolve -->|write_file| RunWF["mkdir parent directories recursively<br/>- fs.writeFile to local disk"]
+ *         Resolve -->|edit_file| RunEF["Read text<br/>- Assert single unique occurrence matches<br/>- Replace exact old_string<br/>- Return change log"]
+ *         Resolve -->|list_files| RunLF["fs.readdir list files/folders<br/>- Format as metadata JSON list"]
+ *         Resolve -->|grep_search| RunGS["Secure pure JS recursive traverse<br/>- Skip node_modules/git/dist<br/>- Return overlap results JSON"]
+ *     end
+ * ```
+ * ============================================================================
+ */
+
+/**
  * Pure JavaScript recursive text search restricted strictly to the workspace directory.
  * Does not spawn external processes. Capped to prevent memory overload.
  */

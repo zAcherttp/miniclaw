@@ -105,7 +105,14 @@ export class FileCheckpointSaver {
 			} else {
 				this.messages = [];
 			}
-		} catch {
+		} catch (err: unknown) {
+			const error = err as NodeJS.ErrnoException;
+			if (error && error.code !== "ENOENT") {
+				console.warn(
+					`[FileCheckpointSaver] Failed to load checkpoint from ${this.filePath}:`,
+					error,
+				);
+			}
 			this.messages = [];
 		}
 	}

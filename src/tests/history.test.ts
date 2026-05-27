@@ -1,10 +1,13 @@
+import fsSync from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 
 // Spy on os.homedir BEFORE importing modules that depend on it
-const tempHome = path.resolve(__dirname, "tmp-home");
+const tempHome = fsSync.mkdtempSync(
+	path.join(os.tmpdir(), "miniclaw-history-"),
+);
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
 import {

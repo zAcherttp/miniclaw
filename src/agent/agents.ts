@@ -1,8 +1,9 @@
-import { createAgent } from "langchain";
+import { createAgent, summarizationMiddleware } from "langchain";
 import type { AppConfig } from "@/config/schema";
 import { createChatModel } from "./models";
 import { createExecuteTool } from "./tools/execute";
 import { createFilesystemTools } from "./tools/filesystem";
+import { createRecallTool, createRememberTool } from "./tools/memory";
 import { createWriteTodosTool } from "./tools/todos";
 
 /**
@@ -17,12 +18,30 @@ export async function createMainAgent(config: AppConfig, workspaceDir: string) {
 	const fsTools = createFilesystemTools(workspaceDir);
 	const todoTool = createWriteTodosTool(workspaceDir);
 	const executeTool = createExecuteTool(workspaceDir);
+	const rememberTool = createRememberTool(config);
+	const recallTool = createRecallTool(config);
 
 	// Base tools list
-	const baseTools = [...fsTools, todoTool, executeTool];
+	const baseTools = [
+		...fsTools,
+		todoTool,
+		executeTool,
+		rememberTool,
+		recallTool,
+	];
+
+	const summarizationModel =
+		config.agent.summarization_model || config.agent.model;
 
 	return createAgent({
 		model,
 		tools: baseTools,
+		middleware: [
+			summarizationMiddleware({
+				model: summarizationModel,
+				trigger: { tokens: config.agent.compaction_trigger_tokens },
+				keep: { messages: 20 },
+			}),
+		],
 	});
 }

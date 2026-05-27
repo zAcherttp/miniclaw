@@ -1,4 +1,6 @@
 import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
+import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
+import { summarizationMiddleware } from "langchain";
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getWorkspaceDir } from "@/config/paths";
@@ -6,6 +8,7 @@ import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
 import { createMainAgent } from "./agents";
 import { compiledGraph } from "./graph";
+import { MemoryManager } from "./memory";
 import { AgentEventObserver } from "./observer";
 import { FileCheckpointSaver } from "./store";
 
@@ -139,6 +142,17 @@ export class AgentLoop {
 					checkpointer.messages.push(new HumanMessage(msg.content));
 					await checkpointer.save();
 
+					// Daily Cron: check if we should run auto-summarization/profiling
+					try {
+						const memoryManager = MemoryManager.getInstance(this.config);
+						await memoryManager.runDailyCronIfNeeded(checkpointer.messages);
+					} catch (err) {
+						logger.error(
+							err,
+							"[AgentLoop] Failed during daily cron memory update",
+						);
+					}
+
 					// Create decoupled Event Observer
 					const observer = new AgentEventObserver(
 						this.bus,
@@ -158,6 +172,8 @@ export class AgentLoop {
 								agentTools: tools,
 								chatId: msg.chat_id,
 								observer,
+								appConfig: this.config,
+								agent,
 							},
 							signal: controller.signal,
 						},
@@ -248,4 +264,80 @@ export async function getSessionMessages(
 	const checkpointer = new FileCheckpointSaver(chatId);
 	await checkpointer.load();
 	return checkpointer.messages;
+}
+
+// Simple helper to apply middleware message updates (resolving RemoveMessage and new ones).
+type BeforeModelMiddleware = (
+	input: { messages: BaseMessage[] },
+	options: { context: Record<string, unknown> },
+) => Promise<{ messages?: BaseMessage[] } | undefined>;
+
+function isBeforeModelMiddleware(
+	middleware: unknown,
+): middleware is BeforeModelMiddleware {
+	return typeof middleware === "function";
+}
+
+function getRemoveMessageId(message: BaseMessage): string | null {
+	if (message.type !== "remove") return null;
+	const id = (message as { id?: unknown }).id;
+	return typeof id === "string" ? id : null;
+}
+
+function applyMessageUpdates(
+	current: BaseMessage[],
+	updates: BaseMessage[],
+): BaseMessage[] {
+	let result = [...current];
+	for (const msg of updates) {
+		if (msg.type === "remove") {
+			const removeId = getRemoveMessageId(msg);
+			if (removeId) {
+				if (removeId === REMOVE_ALL_MESSAGES) {
+					result = [];
+				} else {
+					result = result.filter((m) => m.id !== removeId);
+				}
+			}
+		} else {
+			result.push(msg);
+		}
+	}
+	return result;
+}
+
+/**
+ * Manually forces conversation compaction using the built-in summarization middleware.
+ */
+export async function forceCompactMessages(
+	config: AppConfig,
+	messages: BaseMessage[],
+): Promise<BaseMessage[] | null> {
+	if (messages.length === 0) return null;
+
+	const summarizationModel =
+		config.agent.summarization_model || config.agent.model;
+
+	const middleware = summarizationMiddleware({
+		model: summarizationModel,
+		trigger: { tokens: 1 }, // force trigger on any conversation
+		keep: { messages: 0 },
+	});
+
+	if (middleware.beforeModel) {
+		try {
+			if (!isBeforeModelMiddleware(middleware.beforeModel)) return messages;
+			const updates = await middleware.beforeModel(
+				{ messages },
+				{ context: {} },
+			);
+			if (updates && Array.isArray(updates.messages)) {
+				return applyMessageUpdates(messages, updates.messages);
+			}
+		} catch (err) {
+			logger.error(err, "[AgentLoop] Failed manually compacting messages");
+			throw err;
+		}
+	}
+	return messages;
 }

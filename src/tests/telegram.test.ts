@@ -1,8 +1,23 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
-import type { Bot } from "grammy";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+// Redirect homedir to a sandbox temp folder for this test BEFORE importing modules that depend on it
+const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-telegram-"));
+vi.mock("node:os", async (importOriginal) => {
+	const original = await importOriginal<typeof import("node:os")>();
+	return {
+		...original,
+		default: {
+			...original,
+			homedir: () => tempHome,
+		},
+		homedir: () => tempHome,
+	};
+});
+
+import type { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
 import { MessageBus } from "@/bus/queue";
 import type {
@@ -11,10 +26,6 @@ import type {
 } from "@/channels/base";
 import { TelegramChannel, toMarkdownV2 } from "@/channels/telegram";
 import { getAppDir, getMediaDir } from "@/config/paths";
-
-// Redirect homedir to a sandbox temp folder for this test
-const tempHome = path.join(__dirname, "temp_home_telegram");
-vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
 describe("Telegram Channel Integration & Recovery", () => {
 	let bus: MessageBus;
@@ -597,6 +608,58 @@ describe("Telegram Channel Integration & Recovery", () => {
 			// Check that archived checkpoint file (checkpoint_123.json) is still intact
 			expect(fs.existsSync(path.join(sessionsDir, "checkpoint_123.json"))).toBe(
 				true,
+			);
+
+			await channel.stop();
+		});
+
+		it("should intercept /compact, cancel active executions, and compact active history if messages exist", async () => {
+			const mockAgentLoop = {
+				cancelChat: vi.fn().mockResolvedValue(true),
+				isChatActive: vi.fn().mockReturnValue(false),
+				config: {
+					agent: { model: "gemma2" },
+				},
+			} as unknown as AgentLoop;
+
+			const { channel, bot } = setupChannel(["*"], mockAgentLoop);
+			await channel.start();
+
+			const apiCalls: { method: string; payload: Record<string, unknown> }[] =
+				[];
+			bot.api.config.use((async (
+				_prev: unknown,
+				method: string,
+				payload: unknown,
+			) => {
+				apiCalls.push({ method, payload: payload as Record<string, unknown> });
+				return { ok: true, result: {} };
+			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
+
+			// 1. Test compaction on empty history
+			const compactUpdate = {
+				update_id: 20006,
+				message: {
+					message_id: 106,
+					date: Math.floor(Date.now() / 1000),
+					chat: { id: 12345, type: "private" },
+					from: {
+						id: 12345,
+						is_bot: false,
+						first_name: "User",
+						username: "user",
+					},
+					text: "/compact",
+				},
+			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+
+			await bot.handleUpdate(compactUpdate);
+
+			expect(mockAgentLoop.cancelChat).toHaveBeenCalledWith("12345");
+			expect(apiCalls).toHaveLength(1);
+			expect(apiCalls[0].method).toBe("sendMessage");
+			expect(apiCalls[0].payload.text).toContain(
+				"No messages to compact in the active session",
 			);
 
 			await channel.stop();
