@@ -11,7 +11,7 @@ export const createSearchSkillsTool = (
 	return new DynamicStructuredTool({
 		name: "search_skills",
 		description:
-			"Searches for matching skills in your modular skill suite. Returns matching skill metadata (including their relative paths) so you can read their SKILL.md for instructions.",
+			"Searches for matching skills in your modular skill suite. Returns up to 5 matching skill metadata items (including their relative paths) so you can read their SKILL.md for instructions.",
 		schema: z.object({
 			query: z
 				.string()
@@ -46,9 +46,9 @@ export const createSearchSkillsTool = (
 				}
 
 				logger.info(
-					`[Skills] Found ${matches.length} matching skills for query "${query}"`,
+					`[Skills] Found ${matches.length} matching skills for query "${query}". Returning top 5.`,
 				);
-				const formatted = matches.map((m) => ({
+				const formatted = matches.slice(0, 5).map((m) => ({
 					name: m.name,
 					description: m.description,
 					path: m.path,

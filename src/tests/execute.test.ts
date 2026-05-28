@@ -26,8 +26,9 @@ beforeAll(() => {
 });
 
 afterAll(() => {
-	// Clear it afterward to maintain empty production default
+	// Restore production default (gws only)
 	ALLOWED_BINARIES.clear();
+	ALLOWED_BINARIES.add("gws");
 });
 
 describe("Secure Execute Command Validator", () => {

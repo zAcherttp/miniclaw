@@ -41,7 +41,7 @@ import { ExecuteSecurityError, validateExecuteCommand } from "../security";
 
 export const EXECUTE_TOOL_DESCRIPTION = `Executes a shell command in the workspace directory with strict safety measures.
 
-Supported Whitelisted Binaries: None allowed by default (all commands are blocked by default for security).
+Supported Whitelisted Binaries: gws.
 
 Usage notes:
 - Running directory is strictly locked to your active workspace root.
@@ -73,7 +73,7 @@ export function createExecuteTool(
 			command: z
 				.string()
 				.describe(
-					"The shell command to execute (subject to strict whitelist validation; none allowed by default)",
+					"The shell command to execute (subject to strict whitelist validation; allowed: gws)",
 				),
 		}),
 		func: async ({ command }) => {

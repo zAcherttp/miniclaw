@@ -12,6 +12,8 @@ if (!existsSync(tempHome)) {
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
 import { SkillsManager } from "@/agent/skills";
+import { createSearchSkillsTool } from "@/agent/tools/skills";
+import type { AppConfig } from "@/config/schema";
 
 describe("Skills System Integration", () => {
 	beforeEach(async () => {
@@ -194,6 +196,48 @@ Body text goes here.
 			const idxCalendar = prompt2.indexOf("gws-calendar");
 			const idxGmail = prompt2.indexOf("gws-gmail");
 			expect(idxCalendar).toBeLessThan(idxGmail);
+		});
+	});
+
+	describe("Search Skills Tool Capping", () => {
+		it("should limit the returned search results to at most 5", async () => {
+			const mockWorkspace = path.join(tempHome, "workspace");
+			const skillsDir = path.join(mockWorkspace, "skills");
+			await fs.mkdir(skillsDir, { recursive: true });
+
+			// Create 7 skill directories
+			for (let i = 1; i <= 7; i++) {
+				const sDir = path.join(skillsDir, `skill-${i}`);
+				await fs.mkdir(sDir, { recursive: true });
+				await fs.writeFile(
+					path.join(sDir, "SKILL.md"),
+					`---
+name: skill-${i}
+description: description of skill-${i}
+---
+# Skill ${i}
+`,
+					"utf-8",
+				);
+			}
+
+			const mockConfig = {
+				agent: {
+					skills_dirs: ["skills"],
+				},
+			} as unknown as AppConfig;
+
+			const tool = createSearchSkillsTool(mockConfig, mockWorkspace);
+			const result = await tool.invoke({ query: "skill" });
+			const parsed = JSON.parse(result);
+
+			expect(Array.isArray(parsed)).toBe(true);
+			expect(parsed.length).toBe(5);
+
+			// Assert it has 1 through 5 (since it reads directories, they're ordered alphabetically or by fs order)
+			for (const item of parsed) {
+				expect(item.name).toMatch(/skill-\d/);
+			}
 		});
 	});
 });

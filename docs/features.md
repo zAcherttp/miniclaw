@@ -216,7 +216,7 @@ graph TB
   + Tracks and updates active plan checklists inside `.todos.json` in the workspace root.
 * **`execute`** (`src/agent/tools/execute.ts`)
   + Enables secure execution of whitelisted shell commands in the workspace directory with robust sandboxed guards.
-  - **Internal Security Validation**: Uses custom tokenizers to split command chains (`&&`, `;`, `||`, `|`), resolves environment variables, and validates every command segment against a strict binary whitelist: `npm`, `pnpm`, `node`, `vitest`, `git`, `python`, `python3`, `npx`, `tsc`, `biome`.
+  - **Internal Security Validation**: Uses custom tokenizers to split command chains (`&&`, `;`, `||`, `|`), resolves environment variables, and validates every command segment against a strict binary whitelist: `gws`.
   - **Path Sandboxing**: Rejects path traversal sequences (`..`) in command arguments to prevent host boundary escapes.
   - **Smart Timeout Enforcement**: Automatically monitors and terminates processes exceeding a configurable timeout limit (defaults to 30.0s) and terminates hung process trees to prevent wait-blocking under Windows.
   - **Diagnostic Stderr Prefixing**: Prefixes all standard error lines with `[stderr] ` to allow the agent to easily identify and diagnose stack traces/compilation issues.
@@ -226,7 +226,7 @@ graph TB
     graph TD
         subgraph Input_Processing["1. Input Parsing & Command Validation"]
             A["Agent issues execute(command)"] --> B["Command Tokenizer<br/>(Split segments by &&, ||, ;, |)"]
-            B --> C["Verify Binaries against Whitelist<br/>(npm, pnpm, node, vitest, git, python, npx, tsc, biome)"]
+            B --> C["Verify Binaries against Whitelist<br/>(gws)"]
             C -->|Failed| D["Abort: Security Violation Error"]
             C -->|Passed| E["Path Traversal Inspection<br/>(Block '..', check target bounds)"]
             E -->|Failed| D
