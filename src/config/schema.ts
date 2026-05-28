@@ -8,6 +8,7 @@ export const AgentConfigSchema = z.object({
 	temperature: z.number().default(0.7),
 	reasoning_effort: z.string().optional(),
 	compaction_trigger_tokens: z.number().default(220000),
+	skills_dirs: z.array(z.string()).default(["skills"]),
 });
 
 const AllowFromSchema = z
@@ -39,6 +40,7 @@ export const AppConfigSchema = z.object({
 		max_iterations: 15,
 		temperature: 0.7,
 		compaction_trigger_tokens: 220000,
+		skills_dirs: ["skills"],
 	}),
 	channels: ChannelsConfigSchema.default({
 		telegram: {

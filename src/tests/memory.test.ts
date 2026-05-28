@@ -28,6 +28,7 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 			max_iterations: 15,
 			temperature: 0.7,
 			compaction_trigger_tokens: 220000,
+			skills_dirs: ["skills"],
 		},
 		channels: {
 			telegram: {

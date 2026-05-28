@@ -4,6 +4,7 @@ import { createChatModel } from "./models";
 import { createExecuteTool } from "./tools/execute";
 import { createFilesystemTools } from "./tools/filesystem";
 import { createRecallTool, createRememberTool } from "./tools/memory";
+import { createSearchSkillsTool } from "./tools/skills";
 import { createWriteTodosTool } from "./tools/todos";
 
 /**
@@ -20,6 +21,7 @@ export async function createMainAgent(config: AppConfig, workspaceDir: string) {
 	const executeTool = createExecuteTool(workspaceDir);
 	const rememberTool = createRememberTool(config);
 	const recallTool = createRecallTool(config);
+	const searchSkillsTool = createSearchSkillsTool(config, workspaceDir);
 
 	// Base tools list
 	const baseTools = [
@@ -28,6 +30,7 @@ export async function createMainAgent(config: AppConfig, workspaceDir: string) {
 		executeTool,
 		rememberTool,
 		recallTool,
+		searchSkillsTool,
 	];
 
 	const summarizationModel =

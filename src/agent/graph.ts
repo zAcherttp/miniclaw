@@ -15,6 +15,7 @@ import { logger } from "@/utils/logger";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
 import { MemoryManager } from "./memory";
+import { SkillsManager } from "./skills";
 import { FileCheckpointSaver } from "./store";
 import { estimateMessagesTokens, formatTokens } from "./tokenizer";
 
@@ -118,10 +119,25 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 		}
 	}
 
+	const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
+	let skillsPrompt = "";
+	if (workspaceDir) {
+		try {
+			const loadedSkills = await SkillsManager.loadSkills(
+				workspaceDir,
+				skillsDirs,
+			);
+			skillsPrompt = await SkillsManager.generatePromptBlock(loadedSkills);
+		} catch (err) {
+			logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
+		}
+	}
+
 	const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 	const systemPrompt =
 		basePrompt +
 		(memoryContext ? `\n${memoryContext}` : "") +
+		(skillsPrompt ? `\n${skillsPrompt}` : "") +
 		(memoryPrompt ? `\n${memoryPrompt}` : "");
 
 	// 3. Process built-in middleware (e.g. short-term summarization compaction)

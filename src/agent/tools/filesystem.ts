@@ -3,6 +3,7 @@ import path from "node:path";
 import { DynamicStructuredTool } from "@langchain/core/tools";
 import { z } from "zod";
 import { PathTraversalError, resolveSecurePath } from "../security";
+import { SkillsManager } from "../skills";
 
 /**
  * ============================================================================
@@ -138,6 +139,17 @@ export const createFilesystemTools = (workspaceDir: string) => {
 		func: async ({ file_path: filePath, offset, limit }) => {
 			try {
 				const securePath = resolveSecurePath(workspaceDir, filePath);
+
+				// Intercept reads of SKILL.md inside workspace skills folder to increment usage stats
+				const normalizedPath = securePath.replace(/\\/g, "/");
+				const skillMatch = normalizedPath.match(
+					/\/skills\/([a-z0-9-]+)\/SKILL\.md$/i,
+				);
+				if (skillMatch) {
+					const skillName = skillMatch[1];
+					void SkillsManager.incrementUsage(skillName);
+				}
+
 				const content = await fs.readFile(securePath, "utf-8");
 
 				if (content.length === 0) {

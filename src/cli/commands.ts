@@ -6,10 +6,11 @@ import { Command } from "commander";
 import * as dotenv from "dotenv";
 import type z from "zod";
 import { AgentLoop } from "@/agent/loop";
+import { SkillsManager } from "@/agent/skills";
 import { MessageBus } from "@/bus/queue";
 import { ChannelManager } from "@/channels/manager";
 import { loadConfig, saveConfig } from "@/config/loader";
-import { getConfigPath, getEnvPath } from "@/config/paths";
+import { getConfigPath, getEnvPath, getWorkspaceDir } from "@/config/paths";
 import { AppConfigSchema } from "@/config/schema";
 import { DEFAULT_ENV_TEMPLATE } from "@/template/env";
 
@@ -51,6 +52,11 @@ export function runOnboarding() {
 
 	print(chalk.green(`Configuration saved to ${getConfigPath()}`));
 	print(chalk.green(`Environment variables created at ${envPath}`));
+
+	// Clone template skills during onboarding setup
+	const wsDir = getWorkspaceDir(config.workspace_dir);
+	void SkillsManager.cloneTemplateSkills(wsDir);
+
 	print("You're all set! Try running miniclaw start to begin.");
 	return config;
 }
@@ -63,6 +69,7 @@ program
 		const envPath = getEnvPath();
 		let shouldWriteConfig = true;
 		let shouldWriteEnv = true;
+		let config = AppConfigSchema.parse({});
 
 		if (fs.existsSync(cfgPath)) {
 			const answer = await askQuestion(
@@ -92,9 +99,12 @@ program
 			print(
 				chalk.bold.cyan("Initializing Miniclaw with default configuration..."),
 			);
-			const config = AppConfigSchema.parse({});
 			saveConfig(config);
 			print(chalk.green(`Configuration saved to ${cfgPath}`));
+		} else {
+			try {
+				config = loadConfig(cfgPath);
+			} catch {}
 		}
 
 		if (shouldWriteEnv) {
@@ -107,6 +117,9 @@ program
 		}
 
 		if (shouldWriteConfig || shouldWriteEnv) {
+			// Clone template skills during init
+			const wsDir = getWorkspaceDir(config.workspace_dir);
+			await SkillsManager.cloneTemplateSkills(wsDir);
 			print("You're all set! Try running miniclaw start to begin.");
 		} else {
 			print("No changes made.");
