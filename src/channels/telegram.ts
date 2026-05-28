@@ -4,11 +4,12 @@ import { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
 import { forceCompactMessages, getSessionMessages } from "@/agent/loop";
 import { MemoryManager } from "@/agent/memory";
+import { StateManager } from "@/agent/state";
 import { FileCheckpointSaver } from "@/agent/store";
 import { estimateMessagesTokens, formatTokens } from "@/agent/tokenizer";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
-import { getAppDir, getMediaDir, getWorkspaceDir } from "@/config/paths";
+import { getMediaDir, getWorkspaceDir } from "@/config/paths";
 import { logger } from "@/utils/logger";
 import { Channel, type ChannelConfig } from "./base";
 
@@ -322,24 +323,21 @@ export class TelegramChannel extends Channel {
 
 	private async saveStreamsToDisk(): Promise<void> {
 		try {
-			const filePath = path.join(getAppDir(), "telegram_streams.json");
-			const data = JSON.stringify(Array.from(this.streamBufs.entries()));
-			await fs.promises.writeFile(filePath, data, "utf-8");
+			const entries = Array.from(this.streamBufs.entries());
+			await StateManager.saveTelegramStreams(entries);
 		} catch (err) {
-			logger.error(err, "[Telegram] Failed to save streams to disk");
+			logger.error(err, "[Telegram] Failed to save streams to StateManager");
 		}
 	}
 
 	private async loadStreamsFromDisk(): Promise<void> {
 		try {
-			const filePath = path.join(getAppDir(), "telegram_streams.json");
-			if (fs.existsSync(filePath)) {
-				const content = await fs.promises.readFile(filePath, "utf-8");
-				const entries = JSON.parse(content) as [string, StreamBuffer][];
-				this.streamBufs = new Map<string, StreamBuffer>(entries);
-			}
+			const entries = await StateManager.getTelegramStreams();
+			this.streamBufs = new Map<string, StreamBuffer>(
+				entries as unknown as Array<[string, StreamBuffer]>,
+			);
 		} catch (err) {
-			logger.error(err, "[Telegram] Failed to load streams from disk");
+			logger.error(err, "[Telegram] Failed to load streams from StateManager");
 		}
 	}
 

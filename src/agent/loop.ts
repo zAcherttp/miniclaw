@@ -1,5 +1,4 @@
 import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { REMOVE_ALL_MESSAGES } from "@langchain/langgraph";
 import { summarizationMiddleware } from "langchain";
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
@@ -9,7 +8,10 @@ import { logger } from "@/utils/logger";
 import { createMainAgent } from "./agents";
 import { compiledGraph } from "./graph";
 import { MemoryManager } from "./memory";
+import { applyMessageUpdates, isBeforeModelMiddleware } from "./middleware";
 import { AgentEventObserver } from "./observer";
+import { TaskScheduler } from "./scheduler";
+import { StateManager } from "./state";
 import { FileCheckpointSaver } from "./store";
 
 const INBOUND_BATCH_MAX_CONTENT_LENGTH = 1200;
@@ -35,10 +37,13 @@ export class AgentLoop {
 		string,
 		{ abortController: AbortController }
 	>();
+	private scheduler: TaskScheduler | null = null;
 
 	constructor(config: AppConfig, bus: MessageBus) {
 		this.config = config;
 		this.bus = bus;
+		// biome-ignore lint/suspicious/noExplicitAny: globally expose bus for reminders tool
+		(global as any).messageBus = bus;
 	}
 
 	async cancelChat(chatId: string): Promise<boolean> {
@@ -60,12 +65,19 @@ export class AgentLoop {
 		this.running = true;
 		logger.info(`[AgentLoop] Started with model ${this.config.agent.model}`);
 
+		const workspaceDir = getWorkspaceDir(this.config.workspace_dir);
+		this.scheduler = TaskScheduler.getInstance(this.bus, workspaceDir);
+		await this.scheduler.start();
+
 		this.inboundTask = this.processInbound();
 	}
 
 	async stop() {
 		if (!this.running) return;
 		this.running = false;
+		if (this.scheduler) {
+			await this.scheduler.stop();
+		}
 		await this.bus.publishInbound({
 			channel: "__system__",
 			sender_id: "__system__",
@@ -89,6 +101,29 @@ export class AgentLoop {
 					break;
 				}
 				const msg = this.coalesceInbound(batch);
+
+				// Persist active chat session details for out-of-band programmatic pings
+				if (
+					msg.channel &&
+					msg.chat_id &&
+					msg.chat_id !== "__shutdown__" &&
+					msg.channel !== "__system__"
+				) {
+					const activeSession = {
+						channel: msg.channel,
+						chatId: msg.chat_id,
+						timestamp: new Date().toISOString(),
+					};
+					try {
+						await StateManager.saveLastActiveChat(activeSession);
+					} catch (err) {
+						logger.error(
+							err,
+							"[AgentLoop] Failed to save last active chat to StateManager",
+						);
+					}
+				}
+
 				const batchTag = batch.length > 1 ? ` [batched x${batch.length}]` : "";
 				logger.info(
 					`[AgentLoop] Received from ${msg.channel} (${msg.chat_id}): ${msg.content}${batchTag}`,
@@ -105,7 +140,11 @@ export class AgentLoop {
 				const streamId = `agent-${Date.now()}`;
 
 				try {
-					const agent = await createMainAgent(this.config, workspaceDir);
+					const agent = await createMainAgent(
+						this.config,
+						workspaceDir,
+						this.bus,
+					);
 					const model = agent.options.model;
 					const tools = agent.options.tools || [];
 
@@ -235,46 +274,6 @@ export async function getSessionMessages(
 	const checkpointer = new FileCheckpointSaver(chatId);
 	await checkpointer.load();
 	return checkpointer.messages;
-}
-
-// Simple helper to apply middleware message updates (resolving RemoveMessage and new ones).
-type BeforeModelMiddleware = (
-	input: { messages: BaseMessage[] },
-	options: { context: Record<string, unknown> },
-) => Promise<{ messages?: BaseMessage[] } | undefined>;
-
-function isBeforeModelMiddleware(
-	middleware: unknown,
-): middleware is BeforeModelMiddleware {
-	return typeof middleware === "function";
-}
-
-function getRemoveMessageId(message: BaseMessage): string | null {
-	if (message.type !== "remove") return null;
-	const id = (message as { id?: unknown }).id;
-	return typeof id === "string" ? id : null;
-}
-
-function applyMessageUpdates(
-	current: BaseMessage[],
-	updates: BaseMessage[],
-): BaseMessage[] {
-	let result = [...current];
-	for (const msg of updates) {
-		if (msg.type === "remove") {
-			const removeId = getRemoveMessageId(msg);
-			if (removeId) {
-				if (removeId === REMOVE_ALL_MESSAGES) {
-					result = [];
-				} else {
-					result = result.filter((m) => m.id !== removeId);
-				}
-			}
-		} else {
-			result.push(msg);
-		}
-	}
-	return result;
 }
 
 /**

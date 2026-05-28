@@ -7,7 +7,6 @@ import {
 	Annotation,
 	END,
 	MessagesAnnotation,
-	REMOVE_ALL_MESSAGES,
 	START,
 	StateGraph,
 } from "@langchain/langgraph";
@@ -15,8 +14,10 @@ import { logger } from "@/utils/logger";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
 import { MemoryManager } from "./memory";
+import { applyMessageUpdates, isBeforeModelMiddleware } from "./middleware";
 import { SkillsManager } from "./skills";
 import { FileCheckpointSaver } from "./store";
+import { getSystemInfoBlock } from "./systemInfo";
 import { estimateMessagesTokens, formatTokens } from "./tokenizer";
 
 // Define the clean declarative Agent State using MessagesAnnotation
@@ -27,44 +28,6 @@ export const AgentState = Annotation.Root({
 /**
  * Simple helper to apply middleware message updates (resolving RemoveMessage and new ones).
  */
-type BeforeModelMiddleware = (
-	input: { messages: BaseMessage[] },
-	options: { context: Record<string, unknown> },
-) => Promise<{ messages?: BaseMessage[] } | undefined>;
-
-function isBeforeModelMiddleware(
-	middleware: unknown,
-): middleware is BeforeModelMiddleware {
-	return typeof middleware === "function";
-}
-
-function getRemoveMessageId(message: BaseMessage): string | null {
-	if (message.type !== "remove") return null;
-	const id = (message as { id?: unknown }).id;
-	return typeof id === "string" ? id : null;
-}
-
-function applyMessageUpdates(
-	current: BaseMessage[],
-	updates: BaseMessage[],
-): BaseMessage[] {
-	let result = [...current];
-	for (const msg of updates) {
-		if (msg.type === "remove") {
-			const removeId = getRemoveMessageId(msg);
-			if (removeId) {
-				if (removeId === REMOVE_ALL_MESSAGES) {
-					result = [];
-				} else {
-					result = result.filter((m) => m.id !== removeId);
-				}
-			}
-		} else {
-			result.push(msg);
-		}
-	}
-	return result;
-}
 
 /**
  * Agent Node: Resolves dynamic context prompts, streams tokens and reasoning via
@@ -133,9 +96,12 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 		}
 	}
 
+	const systemInfoBlock = workspaceDir ? getSystemInfoBlock(workspaceDir) : "";
+
 	const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
 	const systemPrompt =
 		basePrompt +
+		(systemInfoBlock ? `\n${systemInfoBlock}` : "") +
 		(memoryContext ? `\n${memoryContext}` : "") +
 		(skillsPrompt ? `\n${skillsPrompt}` : "") +
 		(memoryPrompt ? `\n${memoryPrompt}` : "");

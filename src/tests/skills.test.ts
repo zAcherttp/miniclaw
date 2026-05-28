@@ -11,19 +11,25 @@ if (!existsSync(tempHome)) {
 }
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
-import { SkillsManager } from "@/agent/skills";
+import { SkillFrontmatterSchema, SkillsManager } from "@/agent/skills";
+import { StateManager } from "@/agent/state";
 import { createSearchSkillsTool } from "@/agent/tools/skills";
 import type { AppConfig } from "@/config/schema";
 
 describe("Skills System Integration", () => {
 	beforeEach(async () => {
 		// Ensure fresh temp dir
+		if (existsSync(tempHome)) {
+			await fs.rm(tempHome, { recursive: true, force: true });
+		}
 		await fs.mkdir(tempHome, { recursive: true });
+		StateManager.filePath = path.join(tempHome, "state.json");
 	});
 
 	afterEach(async () => {
 		// Clean up
 		await fs.rm(tempHome, { recursive: true, force: true });
+		StateManager.filePath = undefined;
 		vi.clearAllMocks();
 	});
 
@@ -66,7 +72,7 @@ metadata:
 			]);
 		});
 
-		it("should parse frontmatter correctly using parseFrontmatter", () => {
+		it("should parse frontmatter correctly using parseFrontmatterAs", () => {
 			const fileContent = `---
 name: gws-gmail
 description: Simple description.
@@ -76,8 +82,11 @@ metadata:
 # Skill Title
 Body text goes here.
 `;
-			const { metadata, body } = SkillsManager.parseFrontmatter(fileContent);
-			expect(metadata).toBeDefined();
+			const { metadata, body } = SkillsManager.parseFrontmatterAs(
+				fileContent,
+				SkillFrontmatterSchema,
+			);
+			expect(metadata).not.toBeNull();
 			expect(metadata?.name).toBe("gws-gmail");
 			expect(metadata?.metadata?.version).toBe("1.0.0");
 			expect(body.trim()).toBe("# Skill Title\nBody text goes here.");

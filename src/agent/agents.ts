@@ -1,9 +1,11 @@
 import { createAgent, summarizationMiddleware } from "langchain";
+import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
 import { createChatModel } from "./models";
 import { createExecuteTool } from "./tools/execute";
 import { createFilesystemTools } from "./tools/filesystem";
 import { createRecallTool, createRememberTool } from "./tools/memory";
+import { createManageRemindersTool } from "./tools/reminders";
 import { createSearchSkillsTool } from "./tools/skills";
 import { createWriteTodosTool } from "./tools/todos";
 
@@ -12,9 +14,14 @@ import { createWriteTodosTool } from "./tools/todos";
  *
  * @param config The application configuration
  * @param workspaceDir The absolute path to the active workspace directory
+ * @param bus The message bus queue
  * @returns A promise resolving to the compiled ReactAgent instance
  */
-export async function createMainAgent(config: AppConfig, workspaceDir: string) {
+export async function createMainAgent(
+	config: AppConfig,
+	workspaceDir: string,
+	bus: MessageBus,
+) {
 	const model = await createChatModel(config);
 	const fsTools = createFilesystemTools(workspaceDir);
 	const todoTool = createWriteTodosTool(workspaceDir);
@@ -22,6 +29,7 @@ export async function createMainAgent(config: AppConfig, workspaceDir: string) {
 	const rememberTool = createRememberTool(config);
 	const recallTool = createRecallTool(config);
 	const searchSkillsTool = createSearchSkillsTool(config, workspaceDir);
+	const manageRemindersTool = createManageRemindersTool(workspaceDir, bus);
 
 	// Base tools list
 	const baseTools = [
@@ -31,6 +39,7 @@ export async function createMainAgent(config: AppConfig, workspaceDir: string) {
 		rememberTool,
 		recallTool,
 		searchSkillsTool,
+		manageRemindersTool,
 	];
 
 	const summarizationModel =

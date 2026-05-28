@@ -1,23 +1,38 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
-import { getAppDir } from "@/config/paths";
+import { z } from "zod";
 import { logger } from "@/utils/logger";
+import { StateManager } from "./state";
+
+export const SkillFrontmatterSchema = z.object({
+	name: z.string(),
+	description: z.string(),
+	metadata: z
+		.object({
+			version: z.string().optional(),
+			openclaw: z
+				.object({
+					category: z.string().optional(),
+					requires: z
+						.object({
+							bins: z.array(z.string()).optional(),
+							skills: z.array(z.string()).optional(),
+						})
+						.optional(),
+				})
+				.optional(),
+		})
+		.optional(),
+});
+
+export type SkillFrontmatter = z.infer<typeof SkillFrontmatterSchema>;
 
 export interface SkillMetadata {
 	name: string;
 	description: string;
 	path: string;
-	metadata?: {
-		version?: string;
-		openclaw?: {
-			category?: string;
-			requires?: {
-				bins?: string[];
-				skills?: string[];
-			};
-		};
-	};
+	metadata?: SkillFrontmatter["metadata"];
 }
 
 // biome-ignore lint/complexity/noStaticOnlyClass: grouping static utility operations under SkillsManager namespace
@@ -86,11 +101,38 @@ export class SkillsManager {
 	}
 
 	/**
+	 * Parses and type-validates YAML string against a Zod schema.
+	 */
+	public static parseYamlAs<T>(yamlStr: string, schema: z.ZodType<T>): T {
+		return schema.parse(SkillsManager.parseYaml(yamlStr));
+	}
+
+	/**
+	 * Parses and type-validates YAML frontmatter enclosed in --- blocks against a Zod schema.
+	 */
+	public static parseFrontmatterAs<T>(
+		content: string,
+		schema: z.ZodType<T>,
+	): {
+		metadata: T | null;
+		body: string;
+	} {
+		const match = content.match(/^---\r?\n([\s\S]+?)\r?\n---\r?\n([\s\S]*)$/);
+		if (!match) return { metadata: null, body: content };
+		try {
+			const rawMetadata = SkillsManager.parseYaml(match[1]);
+			const metadata = schema.parse(rawMetadata);
+			return { metadata, body: match[2] };
+		} catch {
+			return { metadata: null, body: content };
+		}
+	}
+
+	/**
 	 * Parses YAML frontmatter enclosed in --- blocks.
 	 */
 	public static parseFrontmatter(content: string): {
-		// biome-ignore lint/suspicious/noExplicitAny: frontmatter parsing returns custom nested any properties
-		metadata: Record<string, any> | null;
+		metadata: Record<string, unknown> | null;
 		body: string;
 	} {
 		const match = content.match(/^---\r?\n([\s\S]+?)\r?\n---\r?\n([\s\S]*)$/);
@@ -115,32 +157,14 @@ export class SkillsManager {
 	 * Reads the persistent skills-stats.json file.
 	 */
 	public static async getUsageStats(): Promise<Record<string, number>> {
-		const statsPath = path.join(getAppDir(), "skills-stats.json");
-		try {
-			const data = await fs.readFile(statsPath, "utf-8");
-			return JSON.parse(data);
-		} catch {
-			return {};
-		}
+		return StateManager.getSkillsStats();
 	}
 
 	/**
 	 * Increments the usage count of a skill and saves it.
 	 */
 	public static async incrementUsage(skillName: string): Promise<void> {
-		const statsPath = path.join(getAppDir(), "skills-stats.json");
-		const stats = await SkillsManager.getUsageStats();
-		const beforeCount = stats[skillName] || 0;
-		const newCount = beforeCount + 1;
-		stats[skillName] = newCount;
-		try {
-			await fs.writeFile(statsPath, JSON.stringify(stats, null, 2), "utf-8");
-			logger.info(
-				`[SkillsStats] Incremented usage count for skill "${skillName}" (${beforeCount} -> ${newCount})`,
-			);
-		} catch (err) {
-			logger.error(err, "[SkillsStats] Failed to save usage count update");
-		}
+		await StateManager.incrementSkill(skillName);
 	}
 
 	/**
@@ -225,9 +249,12 @@ export class SkillsManager {
 
 					try {
 						const content = await fs.readFile(skillMdPath, "utf-8");
-						const { metadata } = SkillsManager.parseFrontmatter(content);
+						const { metadata } = SkillsManager.parseFrontmatterAs(
+							content,
+							SkillFrontmatterSchema,
+						);
 
-						if (!metadata?.name || !metadata.description) {
+						if (!metadata) {
 							continue;
 						}
 

@@ -19,6 +19,7 @@ vi.mock("node:os", async (importOriginal) => {
 
 import type { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
+import { StateManager } from "@/agent/state";
 import { MessageBus } from "@/bus/queue";
 import type {
 	ChannelBlockedAttemptEvent,
@@ -35,14 +36,63 @@ describe("Telegram Channel Integration & Recovery", () => {
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
 		}
+		fs.mkdirSync(tempHome, { recursive: true });
+		StateManager.filePath = path.join(tempHome, ".miniclaw", "state.json");
 	});
 
 	afterEach(() => {
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
 		}
+		StateManager.filePath = undefined;
 		vi.restoreAllMocks();
 	});
+
+	type Config = Bot["botInfo"];
+
+	function makeBotConfig(overrides?: Partial<Config>): Config {
+		return {
+			id: 1234567,
+			is_bot: true,
+			first_name: "MyBot",
+			username: "my_bot",
+			can_join_groups: true,
+			can_read_all_group_messages: false,
+			supports_inline_queries: false,
+			...overrides,
+		} as unknown as Config;
+	}
+
+	type TelegramUpdate = Parameters<Bot["handleUpdate"]>[0];
+
+	function makeMessageUpdate(
+		messageOverrides: Partial<NonNullable<TelegramUpdate["message"]>>,
+		updateOverrides?: Partial<Omit<TelegramUpdate, "message">>,
+	): TelegramUpdate {
+		const message = {
+			message_id: 1,
+			date: Math.floor(Date.now() / 1000),
+			chat: {
+				id: 12345,
+				type: "private" as const,
+				first_name: "User",
+			},
+			from: {
+				id: 12345,
+				is_bot: false,
+				first_name: "User",
+				username: "user",
+			},
+			text: "test",
+			...messageOverrides,
+		} satisfies NonNullable<TelegramUpdate["message"]>;
+
+		return {
+			update_id: 10001,
+			message,
+			...updateOverrides,
+		} as TelegramUpdate;
+	}
 
 	function setupChannel(allowFrom: string[] = ["*"], agentLoop?: AgentLoop) {
 		const channel = new TelegramChannel(
@@ -55,15 +105,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 			agentLoop,
 		);
 		const bot = (channel as unknown as { bot: Bot }).bot;
-		bot.botInfo = {
-			id: 1234567,
-			is_bot: true,
-			first_name: "MyBot",
-			username: "my_bot",
-			can_join_groups: true,
-			can_read_all_group_messages: false,
-			supports_inline_queries: false,
-		} as unknown as Bot["botInfo"];
+		bot.botInfo = makeBotConfig();
 		vi.spyOn(bot, "start").mockImplementation(async () => {});
 		vi.spyOn(bot, "stop").mockImplementation(async () => {});
 		return { channel, bot };
@@ -84,12 +126,10 @@ describe("Telegram Channel Integration & Recovery", () => {
 		};
 
 		// 1. Test Blocked User
-		const blockedUpdate = {
-			update_id: 10001,
-			message: {
+		const blockedUpdate = makeMessageUpdate(
+			{
 				message_id: 1,
-				date: Math.floor(Date.now() / 1000),
-				chat: { id: 11111, type: "private" },
+				chat: { id: 11111, type: "private" as const, first_name: "Blocked" },
 				from: {
 					id: 11111,
 					is_bot: false,
@@ -98,23 +138,25 @@ describe("Telegram Channel Integration & Recovery", () => {
 				},
 				text: "hey there",
 			},
-		} as unknown as Parameters<Bot["handleUpdate"]>[0];
+			{
+				update_id: 10001,
+			},
+		);
 
 		await bot.handleUpdate(blockedUpdate);
 
 		expect(blockedEvent).not.toBeNull();
-		const eventObj = blockedEvent as unknown as ChannelBlockedAttemptEvent;
+		// biome-ignore lint/style/noNonNullAssertion: verified not null in line above
+		const eventObj = blockedEvent!;
 		expect(eventObj.sender_id).toBe("11111");
 		expect(eventObj.content).toBe("hey there");
 		expect(inboundEvent).toBeNull();
 
 		// 2. Test Allowed User
-		const allowedUpdate = {
-			update_id: 10002,
-			message: {
+		const allowedUpdate = makeMessageUpdate(
+			{
 				message_id: 2,
-				date: Math.floor(Date.now() / 1000),
-				chat: { id: 99999, type: "private" },
+				chat: { id: 99999, type: "private" as const, first_name: "Allowed" },
 				from: {
 					id: 99999,
 					is_bot: false,
@@ -123,14 +165,18 @@ describe("Telegram Channel Integration & Recovery", () => {
 				},
 				text: "hello miniclaw",
 			},
-		} as unknown as Parameters<Bot["handleUpdate"]>[0];
+			{
+				update_id: 10002,
+			},
+		);
 
 		blockedEvent = null;
 		await bot.handleUpdate(allowedUpdate);
 
 		expect(blockedEvent).toBeNull();
 		expect(inboundEvent).not.toBeNull();
-		const inboundObj = inboundEvent as unknown as ChannelInboundEvent;
+		// biome-ignore lint/style/noNonNullAssertion: verified not null in line above
+		const inboundObj = inboundEvent!;
 		expect(inboundObj.sender_id).toBe("99999");
 		expect(inboundObj.content).toBe("hello miniclaw");
 
@@ -170,18 +216,10 @@ describe("Telegram Channel Integration & Recovery", () => {
 			arrayBuffer: async () => new TextEncoder().encode(mockText).buffer,
 		} as Response);
 
-		const documentUpdate = {
-			update_id: 10003,
-			message: {
+		const documentUpdate = makeMessageUpdate(
+			{
 				message_id: 3,
-				date: Math.floor(Date.now() / 1000),
-				chat: { id: 12345, type: "private" },
-				from: {
-					id: 12345,
-					is_bot: false,
-					first_name: "User",
-					username: "user",
-				},
+				text: undefined,
 				caption: "Here is the plan",
 				document: {
 					file_id: "doc123",
@@ -191,7 +229,10 @@ describe("Telegram Channel Integration & Recovery", () => {
 					file_size: mockText.length,
 				},
 			},
-		} as unknown as Parameters<Bot["handleUpdate"]>[0];
+			{
+				update_id: 10003,
+			},
+		);
 
 		let inboundContent = "";
 		channel.onInboundMessage = (event) => {
@@ -255,13 +296,11 @@ describe("Telegram Channel Integration & Recovery", () => {
 		expect(draftCall?.payload.text).toBe("My first delta");
 		expect(draftCall?.payload.chat_id).toBe(12345);
 
-		// Verify telegram_streams.json exists and contains the stream buffer
-		const streamFilePath = path.join(getAppDir(), "telegram_streams.json");
-		expect(fs.existsSync(streamFilePath)).toBe(true);
-		const streams = JSON.parse(fs.readFileSync(streamFilePath, "utf-8"));
+		// Verify streams exist in StateManager and contain the stream buffer
+		const streams = await StateManager.getTelegramStreams();
 		expect(streams).toHaveLength(1);
 		expect(streams[0][0]).toBe("12345");
-		expect(streams[0][1].text).toBe("My first delta");
+		expect((streams[0][1] as { text: string }).text).toBe("My first delta");
 
 		// Send second delta concluding the stream
 		apiCalls.length = 0;
@@ -276,18 +315,16 @@ describe("Telegram Channel Integration & Recovery", () => {
 			toMarkdownV2("My first delta with an ending."),
 		);
 
-		// Verify stream buffer is cleared from disk
-		const streamsAfter = JSON.parse(fs.readFileSync(streamFilePath, "utf-8"));
+		// Verify stream buffer is cleared from StateManager
+		const streamsAfter = await StateManager.getTelegramStreams();
 		expect(streamsAfter).toHaveLength(0);
 
 		await channel.stop();
 	});
 
 	it("should recover and conclude in-progress streams during the boot/start recovery phase", async () => {
-		// 1. Manually write a persisted stream buffer representing an interrupted run
-		const appDir = getAppDir();
-		const streamFilePath = path.join(appDir, "telegram_streams.json");
-		const mockStreams = [
+		// 1. Manually write a persisted stream buffer representing an interrupted run using StateManager
+		const mockStreams: Array<[string, unknown]> = [
 			[
 				"98765",
 				{
@@ -299,7 +336,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 				},
 			],
 		];
-		fs.writeFileSync(streamFilePath, JSON.stringify(mockStreams), "utf-8");
+		await StateManager.saveTelegramStreams(mockStreams);
 
 		// 2. Instantiate and start a new TelegramChannel instance
 		const { channel, bot } = setupChannel(["*"]);
@@ -338,8 +375,8 @@ describe("Telegram Channel Integration & Recovery", () => {
 		);
 		expect(sendCall?.payload.reply_parameters).toEqual({ message_id: 42 });
 
-		// Verify stream buffer has been deleted from both memory and disk
-		const streamsOnDisk = JSON.parse(fs.readFileSync(streamFilePath, "utf-8"));
+		// Verify stream buffer has been deleted from StateManager
+		const streamsOnDisk = await StateManager.getTelegramStreams();
 		expect(streamsOnDisk).toHaveLength(0);
 
 		await channel.stop();
@@ -361,21 +398,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 				return { ok: true, result: {} };
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
-			const helpUpdate = {
-				update_id: 20001,
-				message: {
+			const helpUpdate = makeMessageUpdate(
+				{
 					message_id: 101,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/help",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20001,
+				},
+			);
 
 			await bot.handleUpdate(helpUpdate);
 
@@ -413,21 +444,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 				return { ok: true, result: {} };
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
-			const statusUpdate = {
-				update_id: 20002,
-				message: {
+			const statusUpdate = makeMessageUpdate(
+				{
 					message_id: 102,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/status",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20002,
+				},
+			);
 
 			await bot.handleUpdate(statusUpdate);
 
@@ -461,21 +486,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 				return { ok: true, result: {} };
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
-			const stopUpdate = {
-				update_id: 20003,
-				message: {
+			const stopUpdate = makeMessageUpdate(
+				{
 					message_id: 103,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/stop",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20003,
+				},
+			);
 
 			await bot.handleUpdate(stopUpdate);
 
@@ -513,21 +532,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 				return { ok: true, result: {} };
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
-			const newUpdate = {
-				update_id: 20004,
-				message: {
+			const newUpdate = makeMessageUpdate(
+				{
 					message_id: 104,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/new",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20004,
+				},
+			);
 
 			await bot.handleUpdate(newUpdate);
 
@@ -576,21 +589,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 				return { ok: true, result: {} };
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
-			const clearUpdate = {
-				update_id: 20005,
-				message: {
+			const clearUpdate = makeMessageUpdate(
+				{
 					message_id: 105,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/clear",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20005,
+				},
+			);
 
 			await bot.handleUpdate(clearUpdate);
 
@@ -637,21 +644,15 @@ describe("Telegram Channel Integration & Recovery", () => {
 			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
 			// 1. Test compaction on empty history
-			const compactUpdate = {
-				update_id: 20006,
-				message: {
+			const compactUpdate = makeMessageUpdate(
+				{
 					message_id: 106,
-					date: Math.floor(Date.now() / 1000),
-					chat: { id: 12345, type: "private" },
-					from: {
-						id: 12345,
-						is_bot: false,
-						first_name: "User",
-						username: "user",
-					},
 					text: "/compact",
 				},
-			} as unknown as Parameters<Bot["handleUpdate"]>[0];
+				{
+					update_id: 20006,
+				},
+			);
 
 			await bot.handleUpdate(compactUpdate);
 

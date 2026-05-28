@@ -7,20 +7,28 @@ import {
 	SystemMessage,
 	ToolMessage,
 } from "@langchain/core/messages";
+import { z } from "zod";
 import { getAppDir } from "@/config/paths";
 
-export interface SerializedMessage {
-	type: string;
-	// biome-ignore lint/suspicious/noExplicitAny: content can be a string or array of complex objects
-	content: string | any[];
-	name?: string;
-	id?: string;
-	// biome-ignore lint/suspicious/noExplicitAny: additional_kwargs is arbitrary metadata
-	additional_kwargs?: Record<string, any>;
-	// biome-ignore lint/suspicious/noExplicitAny: tool_calls is structured but dynamic JSON from model
-	tool_calls?: any[];
-	tool_call_id?: string;
-}
+export const SerializedMessageSchema = z.object({
+	type: z.string(),
+	content: z.union([z.string(), z.array(z.any())]),
+	name: z.string().optional(),
+	id: z.string().optional(),
+	additional_kwargs: z.record(z.string(), z.any()).optional(),
+	tool_calls: z.array(z.any()).optional(),
+	tool_call_id: z.string().optional(),
+});
+
+const HasToolCallsSchema = z.object({
+	tool_calls: z.array(z.any()),
+});
+
+const HasToolCallIdSchema = z.object({
+	tool_call_id: z.string(),
+});
+
+export type SerializedMessage = z.infer<typeof SerializedMessageSchema>;
 
 export function serializeMessage(message: BaseMessage): SerializedMessage {
 	const res: SerializedMessage = {
@@ -35,19 +43,17 @@ export function serializeMessage(message: BaseMessage): SerializedMessage {
 	) {
 		res.additional_kwargs = message.additional_kwargs;
 	}
-	// biome-ignore lint/suspicious/noExplicitAny: cast to check tool_calls property
-	if ("tool_calls" in message && Array.isArray((message as any).tool_calls)) {
-		// biome-ignore lint/suspicious/noExplicitAny: cast to read tool_calls property
-		res.tool_calls = (message as any).tool_calls;
+
+	const toolCallsParse = HasToolCallsSchema.safeParse(message);
+	if (toolCallsParse.success) {
+		res.tool_calls = toolCallsParse.data.tool_calls;
 	}
-	if (
-		"tool_call_id" in message &&
-		// biome-ignore lint/suspicious/noExplicitAny: cast to check tool_call_id property
-		typeof (message as any).tool_call_id === "string"
-	) {
-		// biome-ignore lint/suspicious/noExplicitAny: cast to read tool_call_id property
-		res.tool_call_id = (message as any).tool_call_id;
+
+	const toolCallIdParse = HasToolCallIdSchema.safeParse(message);
+	if (toolCallIdParse.success) {
+		res.tool_call_id = toolCallIdParse.data.tool_call_id;
 	}
+
 	return res;
 }
 
@@ -100,8 +106,9 @@ export class FileCheckpointSaver {
 			const content = await fs.readFile(this.filePath, "utf-8");
 			const data = JSON.parse(content);
 			if (data && Array.isArray(data.messages)) {
-				// biome-ignore lint/suspicious/noExplicitAny: raw JSON data deserialization
-				this.messages = data.messages.map((m: any) => deserializeMessage(m));
+				this.messages = data.messages.map((m: unknown) =>
+					deserializeMessage(SerializedMessageSchema.parse(m)),
+				);
 			} else {
 				this.messages = [];
 			}
