@@ -40,15 +40,14 @@ export class SkillsManager {
 	/**
 	 * Indentation-aware YAML parser supporting nested objects and arrays.
 	 */
-	// biome-ignore lint/suspicious/noExplicitAny: yaml parsing returns arbitrary structure mapping
-	public static parseYaml(yamlStr: string): Record<string, any> {
-		// biome-ignore lint/suspicious/noExplicitAny: parsing returns arbitrary key value properties
-		const result: Record<string, any> = {};
+	public static parseYaml(yamlStr: string): Record<string, unknown> {
+		const result: Record<string, unknown> = {};
 		const lines = yamlStr.split(/\r?\n/);
-		// biome-ignore lint/suspicious/noExplicitAny: stack manages recursive indentation frame bindings
-		const stack: Array<{ indent: number; obj: any; key: string | null }> = [
-			{ indent: -1, obj: result, key: null },
-		];
+		const stack: Array<{
+			indent: number;
+			obj: Record<string, unknown> | unknown[];
+			key: string | null;
+		}> = [{ indent: -1, obj: result, key: null }];
 
 		for (const line of lines) {
 			if (!line.trim() || line.trim().startsWith("#")) continue;
@@ -69,11 +68,12 @@ export class SkillsManager {
 					.replace(/^['"]|['"]$/g, "");
 				const parentFrame = stack[stack.length - 2];
 				if (parentFrame && currentFrame.key) {
-					if (!Array.isArray(parentFrame.obj[currentFrame.key])) {
-						parentFrame.obj[currentFrame.key] = [];
-						currentFrame.obj = parentFrame.obj[currentFrame.key];
+					const parentObj = parentFrame.obj as Record<string, unknown>;
+					if (!Array.isArray(parentObj[currentFrame.key])) {
+						parentObj[currentFrame.key] = [];
+						currentFrame.obj = parentObj[currentFrame.key] as unknown[];
 					}
-					parentFrame.obj[currentFrame.key].push(val);
+					(parentObj[currentFrame.key] as unknown[]).push(val);
 				}
 			} else {
 				const colonIdx = trimmed.indexOf(":");
@@ -84,14 +84,15 @@ export class SkillsManager {
 						.replace(/^['"]|['"]$/g, "");
 					const valStr = trimmed.slice(colonIdx + 1).trim();
 
+					const currentObj = currentFrame.obj as Record<string, unknown>;
 					if (valStr === "") {
 						const newObj = {};
-						currentFrame.obj[key] = newObj;
+						currentObj[key] = newObj;
 						stack.push({ indent, obj: newObj, key });
 					} else {
 						const val = valStr.replace(/^['"]|['"]$/g, "");
-						currentFrame.obj[key] = val;
-						stack.push({ indent, obj: currentFrame.obj, key });
+						currentObj[key] = val;
+						stack.push({ indent, obj: currentObj, key });
 					}
 				}
 			}
@@ -200,7 +201,10 @@ export class SkillsManager {
 		}
 	}
 
-	private static async copyDirRecursive(
+	/**
+	 * @internal For testing purposes only
+	 */
+	public static async copyDirRecursive(
 		src: string,
 		dest: string,
 	): Promise<number> {

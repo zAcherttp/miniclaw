@@ -10,15 +10,61 @@ import {
 	START,
 	StateGraph,
 } from "@langchain/langgraph";
+import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
 import { MemoryManager } from "./memory";
 import { applyMessageUpdates, isBeforeModelMiddleware } from "./middleware";
+import type { AgentEventObserver } from "./observer";
 import { SkillsManager } from "./skills";
 import { FileCheckpointSaver } from "./store";
 import { getSystemInfoBlock } from "./systemInfo";
 import { estimateMessagesTokens, formatTokens } from "./tokenizer";
+
+interface ToolBoundRunnable {
+	// biome-ignore lint/suspicious/noExplicitAny: stream yields message chunks asynchronously
+	stream(input: unknown, config?: unknown): Promise<AsyncIterable<any>>;
+	invoke(input: unknown, config?: unknown): Promise<unknown>;
+}
+
+interface ToolBindingModel {
+	bindTools(tools: unknown[]): ToolBoundRunnable;
+}
+
+interface GenericTool {
+	name: string;
+	invoke(args: unknown, config?: unknown): Promise<string>;
+}
+
+interface GraphNodeConfig {
+	configurable?: {
+		workspaceDir?: string;
+		agentModel?: unknown;
+		agentTools?: unknown[];
+		chatId?: string;
+		observer?: AgentEventObserver;
+		systemPrompt?: string;
+		appConfig?: AppConfig;
+		agent?: {
+			options?: {
+				middleware?: Array<{
+					name: string;
+					beforeModel?: unknown;
+				}>;
+			};
+		};
+	};
+}
+
+function isToolBindingModel(model: unknown): model is ToolBindingModel {
+	return (
+		typeof model === "object" &&
+		model !== null &&
+		"bindTools" in model &&
+		typeof (model as { bindTools?: unknown }).bindTools === "function"
+	);
+}
 
 // Define the clean declarative Agent State using MessagesAnnotation
 export const AgentState = Annotation.Root({
@@ -33,8 +79,10 @@ export const AgentState = Annotation.Root({
  * Agent Node: Resolves dynamic context prompts, streams tokens and reasoning via
  * the Event Observer, and persists the accumulated AIMessage response.
  */
-// biome-ignore lint/suspicious/noExplicitAny: config is an untyped LangGraph configuration object
-async function agentNode(state: typeof AgentState.State, config?: any) {
+async function agentNode(
+	state: typeof AgentState.State,
+	config?: GraphNodeConfig,
+) {
 	const {
 		workspaceDir,
 		agentModel: model,
@@ -135,28 +183,46 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 		...messages.filter((m) => m.type !== "system"),
 	];
 
-	// biome-ignore lint/suspicious/noExplicitAny: bindTools exists at runtime on standard chat models
-	const modelWithTools = (model as any).bindTools(tools);
+	if (!isToolBindingModel(model)) {
+		throw new Error(
+			"AgentNode: The configured model does not support tool binding.",
+		);
+	}
+	const modelWithTools = model.bindTools(tools || []);
 
-	// biome-ignore lint/suspicious/noExplicitAny: accumulatedMessage is a dynamic AIMessageChunk/AIMessage
-	let accumulatedMessage: any = null;
+	let accumulatedMessage: BaseMessage | null = null;
 	try {
 		const stream = await modelWithTools.stream(activeMessages, config);
 		if (observer) {
-			accumulatedMessage = await observer.consume(stream);
+			accumulatedMessage = (await observer.consume(
+				stream,
+			)) as BaseMessage | null;
 		} else {
 			// Fallback: Accumulate stream directly if no observer is attached
 			for await (const chunk of stream) {
 				if (accumulatedMessage === null) {
-					accumulatedMessage = chunk;
+					accumulatedMessage = chunk as BaseMessage;
+				} else if (
+					typeof accumulatedMessage === "object" &&
+					accumulatedMessage !== null &&
+					"concat" in accumulatedMessage &&
+					typeof (accumulatedMessage as { concat?: unknown }).concat ===
+						"function"
+				) {
+					accumulatedMessage = (
+						accumulatedMessage as { concat(other: unknown): BaseMessage }
+					).concat(chunk);
 				} else {
-					accumulatedMessage = accumulatedMessage.concat(chunk);
+					accumulatedMessage = chunk as BaseMessage;
 				}
 			}
 		}
 	} catch (_e) {
 		// Fallback to invoke if streaming fails
-		accumulatedMessage = await modelWithTools.invoke(activeMessages, config);
+		accumulatedMessage = (await modelWithTools.invoke(
+			activeMessages,
+			config,
+		)) as BaseMessage;
 	}
 
 	if (!accumulatedMessage) {
@@ -182,11 +248,39 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
  * Tools Node: Sequentially executes sandboxed tool calls, publishes execution
  * progress to the Observer, and persists resulting ToolMessages.
  */
-// biome-ignore lint/suspicious/noExplicitAny: config is an untyped LangGraph configuration object
-async function toolsNode(state: typeof AgentState.State, config?: any) {
+async function toolsNode(
+	state: typeof AgentState.State,
+	config?: GraphNodeConfig,
+) {
 	const { agentTools: tools, chatId, observer } = config?.configurable || {};
-	// biome-ignore lint/suspicious/noExplicitAny: tools map can vary by dynamic tool schema
-	const toolsByName = new Map<string, any>(tools.map((t: any) => [t.name, t]));
+
+	const validTools: GenericTool[] = [];
+	if (Array.isArray(tools)) {
+		for (const t of tools) {
+			if (
+				typeof t === "object" &&
+				t !== null &&
+				"name" in t &&
+				typeof (t as { name?: unknown }).name === "string" &&
+				"invoke" in t &&
+				typeof (t as { invoke?: unknown }).invoke === "function"
+			) {
+				validTools.push(t as GenericTool);
+			} else {
+				logger.warn(
+					`[ToolsNode] Discarding invalid tool: ${JSON.stringify(t)}`,
+				);
+			}
+		}
+	} else {
+		logger.error(
+			`[ToolsNode] tools parameter is not a valid array: ${typeof tools}`,
+		);
+	}
+
+	const toolsByName = new Map<string, GenericTool>(
+		validTools.map((t) => [t.name, t]),
+	);
 
 	const lastMessage = state.messages[state.messages.length - 1];
 	if (
@@ -216,9 +310,9 @@ async function toolsNode(state: typeof AgentState.State, config?: any) {
 		} else {
 			try {
 				result = await tool.invoke(tc.args, config);
-				// biome-ignore lint/suspicious/noExplicitAny: err can be of any type when caught from dynamic tool invoke
-			} catch (err: any) {
-				result = `Error executing tool ${tc.name}: ${err.message || err}`;
+			} catch (err) {
+				const errMsg = err instanceof Error ? err.message : String(err);
+				result = `Error executing tool ${tc.name}: ${errMsg}`;
 			}
 		}
 

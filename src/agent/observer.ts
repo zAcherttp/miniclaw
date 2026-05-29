@@ -1,4 +1,36 @@
 import type { MessageBus } from "@/bus/queue";
+import { logger } from "@/utils/logger";
+
+interface Concatable {
+	// biome-ignore lint/suspicious/noExplicitAny: concat takes and returns a merged message chunk
+	concat(other: any): any;
+}
+
+function isConcatable(item: unknown): item is Concatable {
+	return (
+		typeof item === "object" &&
+		item !== null &&
+		"concat" in item &&
+		typeof (item as { concat?: unknown }).concat === "function"
+	);
+}
+
+interface ContentBlock {
+	type: string;
+	reasoning?: string;
+	text?: string;
+}
+
+function hasContentBlocks(
+	chunk: unknown,
+): chunk is { contentBlocks: ContentBlock[] } {
+	return (
+		typeof chunk === "object" &&
+		chunk !== null &&
+		"contentBlocks" in chunk &&
+		Array.isArray((chunk as { contentBlocks?: unknown }).contentBlocks)
+	);
+}
 
 /**
  * Observer that intercepts agent/model streaming chunks and tool calls,
@@ -31,10 +63,8 @@ export class AgentEventObserver {
 	 * Consumes message chunks from the agent/model stream in real-time,
 	 * parsing content blocks (text and reasoning blocks) and publishing them.
 	 */
-	// biome-ignore lint/suspicious/noExplicitAny: Stream chunks can vary dynamically based on provider or streamMode
-	async consume(stream: AsyncIterable<any>) {
-		// biome-ignore lint/suspicious/noExplicitAny: accumulated can be any message block type returned by LangChain
-		let accumulated: any = null;
+	async consume(stream: AsyncIterable<unknown>): Promise<unknown> {
+		let accumulated: unknown = null;
 		for await (const chunk of stream) {
 			// In LangGraph streamMode: "messages", each item in the iterator can be [AIMessageChunk, metadata] or just AIMessageChunk
 			let messageChunk = chunk;
@@ -46,14 +76,18 @@ export class AgentEventObserver {
 
 			if (accumulated === null) {
 				accumulated = messageChunk;
-			} else {
+			} else if (isConcatable(accumulated)) {
 				accumulated = accumulated.concat(messageChunk);
+			} else {
+				logger.warn(
+					"[Observer] Stream chunk is not concatable, overwriting previous chunk",
+				);
+				accumulated = messageChunk;
 			}
 
 			// 1. Unified contentBlocks parsing (standard LangChain recommended approach)
-			// biome-ignore lint/suspicious/noExplicitAny: contentBlocks is a dynamic runtime property on AIMessageChunk
-			const contentBlocks = (messageChunk as any).contentBlocks;
-			if (Array.isArray(contentBlocks) && contentBlocks.length > 0) {
+			if (hasContentBlocks(messageChunk)) {
+				const contentBlocks = messageChunk.contentBlocks;
 				for (const block of contentBlocks) {
 					if (block.type === "reasoning") {
 						const rDelta = block.reasoning || block.text || "";
@@ -105,7 +139,12 @@ export class AgentEventObserver {
 			} else {
 				// Fallback for standard models streaming plain text without contentBlocks
 				const chunkText =
-					typeof messageChunk.content === "string" ? messageChunk.content : "";
+					typeof messageChunk === "object" &&
+					messageChunk !== null &&
+					"content" in messageChunk &&
+					typeof (messageChunk as { content: unknown }).content === "string"
+						? (messageChunk as { content: string }).content
+						: "";
 				if (chunkText) {
 					await this.bus.publishOutbound({
 						channel: this.channel,

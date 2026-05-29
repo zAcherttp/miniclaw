@@ -42,8 +42,7 @@ export class AgentLoop {
 	constructor(config: AppConfig, bus: MessageBus) {
 		this.config = config;
 		this.bus = bus;
-		// biome-ignore lint/suspicious/noExplicitAny: globally expose bus for reminders tool
-		(global as any).messageBus = bus;
+		globalThis.messageBus = bus;
 	}
 
 	async cancelChat(chatId: string): Promise<boolean> {

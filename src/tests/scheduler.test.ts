@@ -71,8 +71,7 @@ describe("TaskScheduler Daemon & Outbound programmatic dispatch", () => {
 		};
 		await StateManager.saveLastActiveChat(activeSession);
 
-		// biome-ignore lint/suspicious/noExplicitAny: globally expose bus for reminders tool testing
-		(global as any).messageBus = bus;
+		globalThis.messageBus = bus;
 	});
 
 	afterEach(async () => {

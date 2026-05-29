@@ -16,8 +16,7 @@ describe("Centralized App StateManager Daemon", () => {
 		// getAppDir() is located in C:\Users\Salad\.gemini\antigravity on Windows,
 		// but let's override StateManager.filePath directly for isolated testing!
 		const testFilePath = path.join(tempHome, "state.json");
-		// biome-ignore lint/suspicious/noExplicitAny: overriding private static path for isolated unit tests
-		(StateManager as any).filePath = testFilePath;
+		StateManager.filePath = testFilePath;
 	});
 
 	afterEach(async () => {

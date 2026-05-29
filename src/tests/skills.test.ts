@@ -40,7 +40,8 @@ name: gws-gmail
 description: Manage your daily communications.
 version: 0.22.5
 `;
-			const parsed = SkillsManager.parseYaml(yaml);
+			// biome-ignore lint/suspicious/noExplicitAny: parser returns dynamic shape in unit tests
+			const parsed = SkillsManager.parseYaml(yaml) as any;
 			expect(parsed.name).toBe("gws-gmail");
 			expect(parsed.description).toBe("Manage your daily communications.");
 			expect(parsed.version).toBe("0.22.5");
@@ -59,7 +60,8 @@ metadata:
         - gws-gmail
         - gws-calendar
 `;
-			const parsed = SkillsManager.parseYaml(yaml);
+			// biome-ignore lint/suspicious/noExplicitAny: parser returns dynamic shape in unit tests
+			const parsed = SkillsManager.parseYaml(yaml) as any;
 			expect(parsed.metadata).toBeDefined();
 			expect(parsed.metadata.version).toBe("0.22.5");
 			expect(parsed.metadata.openclaw).toBeDefined();
@@ -135,12 +137,7 @@ Body text goes here.
 			// Perform mock cloning using private copyDirRecursive directly or via simulated loader
 			// Since cloneTemplateSkills expects template directories inside workspace/src/template,
 			// let's test our copyDirRecursive logic through a helper or mock source.
-			// Let's assert our copy recursively works.
-			// biome-ignore lint/suspicious/noExplicitAny: accessing private static copyDirRecursive for tests
-			const copyResult = await (SkillsManager as any).copyDirRecursive(
-				srcDir,
-				destDir,
-			);
+			const copyResult = await SkillsManager.copyDirRecursive(srcDir, destDir);
 
 			expect(copyResult).toBe(2);
 			expect(existsSync(path.join(destDir, "gws-gmail", "SKILL.md"))).toBe(
