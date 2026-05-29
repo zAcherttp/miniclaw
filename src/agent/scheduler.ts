@@ -235,18 +235,20 @@ export class TaskScheduler {
 			return;
 		}
 
-		const formattedTime = new Date(reminder.targetTime).toLocaleTimeString(
-			"en-US",
-			{
+		const formattedTime = new Date(reminder.targetTime)
+			.toLocaleTimeString("en-US", {
 				hour: "2-digit",
 				minute: "2-digit",
 				second: "2-digit",
-			},
-		);
+				hour12: true,
+			})
+			.toLowerCase()
+			.replace(/\s+/g, "");
 
-		const latePrefix = isLate ? "⚠️ [LATE ALERT] " : "🔔 ";
-		const typeLabel = reminder.type.toUpperCase();
-		const alertContent = `${latePrefix}**Reminder: ${reminder.title}** (${typeLabel})\nEvent target time is at ${formattedTime}.`;
+		const typeCapitalized =
+			reminder.type.charAt(0).toUpperCase() + reminder.type.slice(1);
+		const latePrefix = isLate ? "⚠️ [LATE ALERT] " : "";
+		const alertContent = `${latePrefix}${typeCapitalized} Reminder: ${reminder.title} at ${formattedTime}`;
 
 		// 1. Sync Checkpoint: Append SystemMessage directly to checkpoint.json
 		try {

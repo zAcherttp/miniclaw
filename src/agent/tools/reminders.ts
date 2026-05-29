@@ -19,37 +19,42 @@ export const createManageRemindersTool = (
 ) => {
 	return new DynamicStructuredTool({
 		name: "manage_reminders",
-		description:
-			"Creates, updates, lists, or deletes stateful user reminders/tasks in reminders.json. This handles all user-facing calendar alerts, deadlined tasks, and alerts. Each reminder features a targetTime and triggerTime.",
+		description: [
+			"Manage user reminders and scheduled alerts. Supports four actions:",
+			"- **create**: Set a new reminder. Requires: `title`, `targetTime`. Optional: `type` (defaults to 'general').",
+			"- **list**: Retrieve all reminders. No other fields needed.",
+			"- **update**: Modify an existing reminder. Requires: `id`. Optional: `title`, `type`, `targetTime`, `status`, `payload`.",
+			"- **delete**: Remove a reminder. Requires: `id`.",
+		].join("\n"),
 		schema: z.object({
 			action: z
 				.enum(["create", "update", "list", "delete"])
-				.describe("The action to perform on the reminders database"),
+				.describe("The action to perform."),
 			id: z
 				.string()
 				.optional()
-				.describe("The unique ID of the reminder (required for update/delete)"),
+				.describe("The reminder ID. Required for update and delete."),
 			title: z
 				.string()
 				.optional()
 				.describe(
-					"Title or details of the task/reminder (required for create)",
+					"Short description of the reminder, e.g. 'Drink water', 'Team standup'. Required for create.",
 				),
 			type: ReminderTypeSchema.optional().describe(
-				"The type of reminder (required for create)",
+				"Category of reminder. Defaults to 'general'. Use 'task' for todos, 'calendar' for meetings, 'general' for simple reminders.",
 			),
 			targetTime: z
 				.string()
 				.optional()
 				.describe(
-					"The ISO timestamp when the event/deadline occurs, e.g. '2026-05-28T18:00:00.000Z' (required for create)",
+					"ISO 8601 timestamp for when the reminder should fire, e.g. '2026-05-28T10:00:00.000+07:00'. Convert relative times like '10am' to an absolute ISO timestamp using the current date/time from the system context. Required for create.",
 				),
 			status: z
 				.enum(["pending", "fired", "completed", "cancelled", "missed"])
 				.optional()
-				.describe("The new status of the reminder (optional for update)"),
+				.describe("New status for the reminder. Only used with update."),
 			payload: ReminderPayloadSchema.optional().describe(
-				"Optional metadata state payload for sub-tasks or meetings (optional)",
+				"Optional metadata like notes, meeting URLs, or task status.",
 			),
 		}),
 		func: async ({ action, id, title, type, targetTime, status, payload }) => {
@@ -66,9 +71,10 @@ export const createManageRemindersTool = (
 				}
 
 				if (action === "create") {
-					if (!title || !type || !targetTime) {
-						return "Error: Missing required fields ('title', 'type', 'targetTime') for creating a reminder.";
+					if (!title || !targetTime) {
+						return "Error: Missing required fields for creating a reminder. Provide 'title' and 'targetTime'.";
 					}
+					const resolvedType = type ?? "general";
 
 					// Validate date format
 					const targetDate = new Date(targetTime);
@@ -80,7 +86,7 @@ export const createManageRemindersTool = (
 					const newReminder: Reminder = {
 						id: newId,
 						title,
-						type: type as ReminderType,
+						type: resolvedType as ReminderType,
 						targetTime,
 						triggerTime: "", // Calculated dynamically by scheduleReminder
 						status: "pending",
