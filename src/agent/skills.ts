@@ -314,9 +314,9 @@ export class SkillsManager {
 				"[Skills] Prompt injection skipped: No active skills discovered (all counts are 0).",
 			);
 			return (
-				"\n## DYNAMIC AGENT SKILLS\n" +
-				"You have access to a rich suite of modular agent skills. Because you haven't used any skills yet on this session, none are pre-loaded in your prompt catalog.\n" +
-				"To search and discover available skills, you MUST call the `search_skills` tool first to find relevant guidelines and paths.\n"
+				"## SKILLS\n" +
+				"You have access to a rich suite of modular skills. Because you haven't used any skills yet on this session, none are pre-loaded in your prompt catalog.\n" +
+				"To search and discover available skills, you MUST call the `search_skills` tool first to find relevant guidelines and paths."
 			);
 		}
 
@@ -324,7 +324,7 @@ export class SkillsManager {
 			`[Skills] Prompt injected with ${activeSkills.length} top active skills catalog.`,
 		);
 
-		let block = "\n## ACTIVE AGENT SKILLS (Top 10 most used)\n";
+		let block = "## ACTIVE AGENT SKILLS (Top 10 most used)\n";
 		block +=
 			"You have access to the following frequently used skills. If you need to perform a task matching any of these, you MUST first read the detailed instructions inside its corresponding `SKILL.md` using `read_file` before proceeding.\n\n";
 
@@ -333,7 +333,7 @@ export class SkillsManager {
 		}
 
 		block +=
-			"\nFor other tasks not listed above, call the `search_skills` tool to search the full skill catalog.\n";
+			"\nFor other tasks not listed above, call the `search_skills` tool to search the full skill catalog.";
 		return block;
 	}
 }

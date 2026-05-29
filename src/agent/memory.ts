@@ -313,6 +313,36 @@ export class MemoryManager {
 	}
 
 	/**
+	 * Formats the user profile data into a clean, markdown prompt block.
+	 */
+	public async generatePromptBlock(): Promise<string> {
+		const profile = await this.getProfile();
+		const profileDetails: string[] = [];
+
+		if (profile.username) {
+			profileDetails.push(`- Username: ${profile.username}`);
+		}
+		if (profile.timezone) {
+			profileDetails.push(`- User Timezone: ${profile.timezone}`);
+		}
+		if (profile.traits && profile.traits.length > 0) {
+			profileDetails.push(
+				`- User Traits & Preferences:\n${profile.traits.map((t) => `  - ${t}`).join("\n")}`,
+			);
+		}
+		if (profile.activeGoals && profile.activeGoals.length > 0) {
+			profileDetails.push(
+				`- User Long-Term Goals (Academic, Career, Projects, or Life Goals):\n${profile.activeGoals.map((g) => `  - ${g}`).join("\n")}`,
+			);
+		}
+
+		if (profileDetails.length > 0) {
+			return `## USER INFO:\n${profileDetails.join("\n")}`;
+		}
+		return "";
+	}
+
+	/**
 	 * Saves a UserProfile state to the store.
 	 */
 	public async saveProfile(profile: UserProfile): Promise<void> {
@@ -345,7 +375,7 @@ Your task is to analyze the conversation history and refine the user's profile s
 
 Current User Profile State:
 - Traits: ${JSON.stringify(currentProfile.traits)}
-- Active Goals: ${JSON.stringify(currentProfile.activeGoals)}
+- Long-Term Goals (Academic, Career, Projects, Life): ${JSON.stringify(currentProfile.activeGoals)}
 - Username: ${currentProfile.username || "Unknown"}
 - Timezone: ${currentProfile.timezone || "Unknown"}
 
@@ -354,7 +384,7 @@ ${formattedHistory}
 
 Instructions:
 1. Extract any new user traits, preferences, rules, or permanent observations. Keep traits concise (e.g. "Prefers TypeScript for development", "Uses dark mode").
-2. Update the list of active user goals or pending schedules mentioned (e.g. "Create secure execute tool", "Manage calendar"). Mark completed goals as done by removing them, and add new ones.
+2. Update the list of Long-Term Goals. This should ONLY capture significant long-term pursuits, academic objectives, career milestones, lifelong ambitions, or multi-day projects (e.g. "Build open-source compiler", "Learn Vietnamese", "Master machine learning"). Do NOT capture fleeting, immediate tasks, short-term commands, or scheduled alarms (e.g. do NOT capture "Drink water at 10am", "Run git pull", or "Send email"). Remove completed or abandoned goals, and append new ones.
 3. Identify if the user's name or timezone was explicitly mentioned or can be inferred (e.g. "I'm in Tokyo now" -> "Asia/Tokyo").
 4. Return your analysis strictly as a valid JSON object in the following format:
 {

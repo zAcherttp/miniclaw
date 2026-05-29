@@ -19,17 +19,19 @@ export const createManageRemindersTool = (
 ) => {
 	return new DynamicStructuredTool({
 		name: "manage_reminders",
-		description: [
-			"Manage user reminders and scheduled alerts. Supports four actions:",
-			"- **create**: Set a new reminder. Requires: `title`, `targetTime`. Optional: `type` (defaults to 'general').",
-			"- **list**: Retrieve all reminders. No other fields needed.",
-			"- **update**: Modify an existing reminder. Requires: `id`. Optional: `title`, `type`, `targetTime`, `status`, `payload`.",
-			"- **delete**: Remove a reminder. Requires: `id`.",
-		].join("\n"),
+		description: "Manage user reminders and scheduled alerts.",
 		schema: z.object({
 			action: z
 				.enum(["create", "update", "list", "delete"])
-				.describe("The action to perform."),
+				.describe(
+					[
+						"The action to perform. Supports four actions:",
+						"- **create**: Set a new reminder. Requires: `title`, `targetTime`. Optional: `type` (defaults to 'general').",
+						"- **list**: Retrieve all reminders. No other fields needed.",
+						"- **update**: Modify an existing reminder. Requires: `id`. Optional: `title`, `type`, `targetTime`, `status`, `payload`.",
+						"- **delete**: Remove a reminder. Requires: `id`.",
+					].join("\n"),
+				),
 			id: z
 				.string()
 				.optional()

@@ -32,6 +32,6 @@ export const ContextEngineeringManager = {
 			return "";
 		}
 
-		return `\n## PERSISTENT CONTEXT & ALIGNMENT GUIDELINES:\n${guidelines.join("\n\n")}\n`;
+		return `## PERSISTENT CONTEXT & ALIGNMENT GUIDELINES:\n${guidelines.join("\n\n")}`;
 	},
 };

@@ -19,10 +19,10 @@ export function getSystemInfoBlock(workspaceDir: string): string {
 			: process.env.SHELL || "/bin/sh";
 
 	return (
-		"\n## HOST ENVIRONMENT & SYSTEM CONTEXT\n" +
-		`- **Operating System**: ${os.platform()} (${os.type()} ${os.release()})\n` +
-		`- **Active Workspace Directory**: ${workspaceDir}\n` +
-		`- **Current Local Date & Time**: ${formattedDate}\n` +
-		`- **Default Shell**: ${defaultShell}\n`
+		"## HOST ENVIRONMENT & SYSTEM CONTEXT\n" +
+		`- Operating System: ${os.platform()} (${os.type()} ${os.release()})\n` +
+		`- Active Workspace Directory: ${workspaceDir}\n` +
+		`- Current Local Date & Time: ${formattedDate}\n` +
+		`- Default Shell: ${defaultShell}`
 	);
 }

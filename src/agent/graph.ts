@@ -56,27 +56,7 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 	if (appConfig) {
 		try {
 			const memoryManager = MemoryManager.getInstance(appConfig);
-			const profile = await memoryManager.getProfile();
-			const profileDetails: string[] = [];
-
-			if (profile.username)
-				profileDetails.push(`Username: ${profile.username}`);
-			if (profile.timezone)
-				profileDetails.push(`User Timezone: ${profile.timezone}`);
-			if (profile.traits && profile.traits.length > 0) {
-				profileDetails.push(
-					`User Traits & Preferences:\n${profile.traits.map((t) => `- ${t}`).join("\n")}`,
-				);
-			}
-			if (profile.activeGoals && profile.activeGoals.length > 0) {
-				profileDetails.push(
-					`User Active Goals:\n${profile.activeGoals.map((g) => `- ${g}`).join("\n")}`,
-				);
-			}
-
-			if (profileDetails.length > 0) {
-				memoryPrompt = `\n\n## USER MEMORY (Long-Term Memory State):\n${profileDetails.join("\n\n")}`;
-			}
+			memoryPrompt = await memoryManager.generatePromptBlock();
 		} catch (err) {
 			logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
 		}
@@ -99,12 +79,14 @@ async function agentNode(state: typeof AgentState.State, config?: any) {
 	const systemInfoBlock = workspaceDir ? getSystemInfoBlock(workspaceDir) : "";
 
 	const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-	const systemPrompt =
-		basePrompt +
-		(systemInfoBlock ? `\n${systemInfoBlock}` : "") +
-		(memoryContext ? `\n${memoryContext}` : "") +
-		(skillsPrompt ? `\n${skillsPrompt}` : "") +
-		(memoryPrompt ? `\n${memoryPrompt}` : "");
+	const promptParts = [
+		basePrompt,
+		systemInfoBlock,
+		memoryContext,
+		skillsPrompt,
+		memoryPrompt,
+	].filter(Boolean);
+	const systemPrompt = `${promptParts.map((p) => p.trim()).join("\n\n")}\n`;
 
 	// 3. Process built-in middleware (e.g. short-term summarization compaction)
 	let middlewareUpdates: BaseMessage[] | null = null;
