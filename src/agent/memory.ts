@@ -1,6 +1,5 @@
 import crypto from "node:crypto";
 import path from "node:path";
-import { type BaseMessage, SystemMessage } from "@langchain/core/messages";
 import { GoogleGenerativeAIEmbeddings } from "@langchain/google-genai";
 import { OllamaEmbeddings } from "@langchain/ollama";
 import { OpenAIEmbeddings } from "@langchain/openai";
@@ -9,7 +8,6 @@ import { getAppDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
 import { todayISODate } from "@/utils/date";
 import { logger } from "@/utils/logger";
-import { createChatModel } from "./models";
 
 export interface FactMemory {
 	content: string;
@@ -370,107 +368,5 @@ export class MemoryManager {
 	public async updateProfileAndTimestamp(profile: UserProfile): Promise<void> {
 		await this.saveProfile(profile);
 		await this.set("meta_last_summarization_date", todayISODate());
-	}
-
-	/**
-	 * Daily Session Auto-summarizer job. Extracts preferences, traits, and goals.
-	 */
-	public async runDailySummarization(messages: BaseMessage[]): Promise<void> {
-		if (messages.length === 0) return;
-		try {
-			logger.info(`[MemoryManager] Running daily auto-summarization job...`);
-			const model = await createChatModel(this.config);
-			const currentProfile = await this.getProfile();
-
-			const formattedHistory = messages
-				.map(
-					(m) =>
-						`${m.type.toUpperCase()}: ${
-							typeof m.content === "string"
-								? m.content
-								: JSON.stringify(m.content)
-						}`,
-				)
-				.join("\n");
-
-			const prompt = `You are the memory and profiling engine for Miniclaw, an advanced personal assistant.
-Your task is to analyze the conversation history and refine the user's profile state.
-
-Current User Profile State:
-- Traits: ${JSON.stringify(currentProfile.traits)}
-- Long-Term Goals (Academic, Career, Projects, Life): ${JSON.stringify(currentProfile.activeGoals)}
-- Username: ${currentProfile.username || "Unknown"}
-- Timezone: ${currentProfile.timezone || "Unknown"}
-
-Conversation History:
-${formattedHistory}
-
-Instructions:
-1. Extract any new user traits, preferences, rules, or permanent observations. Keep traits concise (e.g. "Prefers TypeScript for development", "Uses dark mode").
-2. Update the list of Long-Term Goals. This should ONLY capture significant long-term pursuits, academic objectives, career milestones, lifelong ambitions, or multi-day projects (e.g. "Build open-source compiler", "Learn Vietnamese", "Master machine learning"). Do NOT capture fleeting, immediate tasks, short-term commands, or scheduled alarms (e.g. do NOT capture "Drink water at 10am", "Run git pull", or "Send email"). Remove completed or abandoned goals, and append new ones.
-3. Identify if the user's name or timezone was explicitly mentioned or can be inferred (e.g. "I'm in Tokyo now" -> "Asia/Tokyo").
-4. Return your analysis strictly as a valid JSON object in the following format:
-{
-  "username": "string or null",
-  "timezone": "string or null",
-  "traits": ["string", "string", ...],
-  "activeGoals": ["string", "string", ...]
-}
-Do NOT wrap the JSON in markdown blocks or include any other conversational preamble. Return ONLY the raw JSON string.`;
-
-			const response = await model.invoke([new SystemMessage(prompt)]);
-			let content =
-				typeof response.content === "string" ? response.content.trim() : "";
-
-			// Clean markdown wrapper if model accidentally included it
-			if (content.startsWith("```json")) {
-				content = content.substring(7);
-			}
-			if (content.endsWith("```")) {
-				content = content.substring(0, content.length - 3);
-			}
-			content = content.trim();
-
-			const updatedProfile = JSON.parse(content) as UserProfile;
-			if (
-				updatedProfile &&
-				Array.isArray(updatedProfile.traits) &&
-				Array.isArray(updatedProfile.activeGoals)
-			) {
-				await this.updateProfileAndTimestamp(updatedProfile);
-
-				logger.info(
-					`[MemoryManager] Daily auto-summarization completed successfully. Profile updated: ${JSON.stringify(
-						updatedProfile,
-					)}`,
-				);
-			}
-		} catch (err) {
-			logger.error(
-				err,
-				`[MemoryManager] Failed to run daily auto-summarization`,
-			);
-			throw err;
-		}
-	}
-
-	/**
-	 * Checks if daily summarization has run today. If not, triggers it.
-	 */
-	public async runDailyCronIfNeeded(messages: BaseMessage[]): Promise<void> {
-		try {
-			await this.init();
-			const todayStr = new Date().toISOString().split("T")[0];
-			const lastRunDate = await this.get<string>(
-				"meta_last_summarization_date",
-			);
-
-			if (lastRunDate !== todayStr) {
-				await this.runDailySummarization(messages);
-			}
-		} catch (err) {
-			logger.error(err, "[MemoryManager] Error in runDailyCronIfNeeded");
-			throw err;
-		}
 	}
 }

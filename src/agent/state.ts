@@ -10,7 +10,6 @@ export interface ConsolidationState {
 	active: boolean;
 	proposedWorkflow: string;
 	checkpointMessageCount?: number;
-	archiveOnConclude?: boolean;
 }
 
 /**

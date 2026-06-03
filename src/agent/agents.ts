@@ -148,7 +148,6 @@ export async function createConsolidationAgent(
 			try {
 				const condState = await StateManager.getConsolidationState(chatId);
 				const targetCount = condState?.checkpointMessageCount;
-				let archived = false;
 
 				if (typeof targetCount === "number" && targetCount >= 0) {
 					const { FileCheckpointSaver } = await import("@/agent/store");
@@ -161,25 +160,14 @@ export async function createConsolidationAgent(
 							`[Consolidation] Wiped consolidation messages from checkpoint for chat ${chatId}. Restored base count: ${targetCount}`,
 						);
 					}
-					if (condState?.archiveOnConclude) {
-						await checkpointer.archive();
-						archived = true;
-						logger.info(
-							`[Consolidation] Archived compacted history for chat ${chatId} post-consolidation.`,
-						);
-					}
 				}
 
 				await StateManager.clearConsolidationState(chatId);
 
 				const replyText =
 					action === "save"
-						? archived
-							? "Workflow saved successfully. Active history archived. New session started."
-							: "Workflow saved successfully. Control returned to main agent."
-						: archived
-							? "Workflow discarded. Active history archived. New session started."
-							: "Workflow discarded. Control returned to main agent.";
+						? "Workflow saved successfully. Control returned to main agent."
+						: "Workflow discarded. Control returned to main agent.";
 				await bus.publishOutbound({
 					channel,
 					chat_id: chatId,

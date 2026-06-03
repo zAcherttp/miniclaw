@@ -101,65 +101,6 @@ export class TelegramChannel extends Channel {
 					return;
 				}
 
-				if (command === "/new") {
-					logger.info(`[Telegram] /new command received for chat ${chatId}`);
-					if (this.agentLoop) {
-						await this.agentLoop.cancelChat(chatId);
-					}
-					const checkpointer = new FileCheckpointSaver(chatId);
-					await checkpointer.load();
-					logger.info(
-						`[Telegram] Loaded checkpoint messages for /new: count=${checkpointer.messages.length}, chatId=${chatId}`,
-					);
-					logger.info(
-						`[Telegram] agentLoop present: ${!!this.agentLoop}, config present: ${!!this.agentLoop?.config}`,
-					);
-
-					// Consolidation: Run unified compaction/consolidation pipeline on the active history before archiving
-					if (this.agentLoop?.config && checkpointer.messages.length > 0) {
-						try {
-							logger.info(
-								`[Telegram] Triggering unified compaction pipeline for /new with ${checkpointer.messages.length} messages.`,
-							);
-							const { forceCompactMessages } = await import(
-								"@/agent/compaction"
-							);
-							const { StateManager } = await import("@/agent/state");
-
-							await forceCompactMessages(
-								this.agentLoop.config,
-								checkpointer.messages,
-								chatId,
-								"telegram",
-								this.agentLoop.bus,
-							);
-
-							const condState =
-								await StateManager.getConsolidationState(chatId);
-							if (condState) {
-								// Reusable workflow proposed: flag it to archive when concluded
-								condState.archiveOnConclude = true;
-								await StateManager.saveConsolidationState(chatId, condState);
-								logger.info(
-									`[Telegram] Consolidation workflow proposed during /new. Set archiveOnConclude=true for chat ${chatId}`,
-								);
-								return;
-							}
-						} catch (err) {
-							logger.error(
-								err,
-								"[Telegram] Failed to run compaction before session archive",
-							);
-						}
-					}
-
-					await checkpointer.archive();
-					await ctx.reply(
-						"New session started. Active history archived for periodic daily summary and consolidation.",
-					);
-					return;
-				}
-
 				if (command === "/clear") {
 					logger.info(`[Telegram] /clear command received for chat ${chatId}`);
 					if (this.agentLoop) {
@@ -251,7 +192,7 @@ export class TelegramChannel extends Channel {
 					logger.info(
 						`[Telegram] ${command} command received for chat ${chatId}`,
 					);
-					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/new - Start a fresh session (archives current history)\n/clear - Wipe active session history (archives preserved)\n/compact - Compact conversation history (summarizes old messages)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
+					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/clear - Wipe active session history (archives preserved)\n/compact - Compact conversation history (summarizes old messages)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
 					await ctx.reply(helpText);
 					return;
 				}
@@ -487,10 +428,6 @@ export class TelegramChannel extends Channel {
 		// Register native commands with Telegram API
 		try {
 			const commands = [
-				{
-					command: "new",
-					description: "Start a fresh session (archive current history)",
-				},
 				{
 					command: "clear",
 					description: "Wipe active session history (archives preserved)",
