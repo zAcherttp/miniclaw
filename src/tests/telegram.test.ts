@@ -322,6 +322,124 @@ describe("Telegram Channel Integration & Recovery", () => {
 		await channel.stop();
 	});
 
+	it("should edit a single tool hint message and conclude it with time/collapsed summary when the main stream ends", async () => {
+		const { channel, bot } = setupChannel(["*"]);
+		const apiCalls: { method: string; payload: Record<string, unknown> }[] = [];
+
+		bot.api.config.use((async (
+			_prev: unknown,
+			method: string,
+			payload: unknown,
+		) => {
+			const payloadRecord = payload as Record<string, unknown>;
+			apiCalls.push({ method, payload: payloadRecord });
+			if (method === "sendMessage") {
+				return {
+					ok: true,
+					result: {
+						message_id: 2001,
+						chat: {
+							id: payloadRecord.chat_id,
+							type: "private",
+						},
+						date: Math.floor(Date.now() / 1000),
+						text: payloadRecord.text,
+					},
+				};
+			}
+			return { ok: true, result: {} };
+		}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
+
+		await channel.start();
+
+		// Simulate inbound message to start turn timing
+		const mockUpdate = makeMessageUpdate(
+			{
+				message_id: 501,
+				text: "Run some tools please",
+			},
+			{
+				update_id: 30001,
+			},
+		);
+		await bot.handleUpdate(mockUpdate);
+
+		// Now send delta for first tool start
+		const t0 = Date.now();
+		const dateSpy = vi.spyOn(Date, "now").mockReturnValue(t0);
+
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "⚙️ Calling search_skills\n", {
+			_stream_id: "tools-123",
+			_stream_delta: true,
+			_tool_names: ["search_skills"],
+		});
+
+		// Verify draft is created
+		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
+		let draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
+		expect(draftCall?.payload.text).toBe("⚙️ Calling search_skills\n");
+
+		// Conclude the first tool block (stream_end for tools)
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "", {
+			_stream_id: "tools-123",
+			_stream_end: true,
+		});
+
+		// Verify it did NOT send a final message yet (stays open)
+		expect(apiCalls.some((c) => c.method === "sendMessage")).toBe(false);
+
+		// Advance time to bypass editIntervalMs (600ms) throttling
+		dateSpy.mockReturnValue(t0 + 1000);
+
+		// Send delta for second tool start
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "⚙️ Calling read_file\n", {
+			_stream_id: "tools-123",
+			_stream_delta: true,
+			_tool_names: ["read_file"],
+		});
+
+		// Verify it appended to the draft text and edited the draft
+		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
+		draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
+		expect(draftCall?.payload.text).toBe(
+			"⚙️ Calling search_skills\n⚙️ Calling read_file\n",
+		);
+
+		// Now start and stream the main response text
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "Here is the final response.");
+
+		// Conclude the main stream
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "", {
+			_stream_end: true,
+		});
+
+		// Verify that both final messages are sent
+		// 1. The main response message
+		// 2. The concluded tool hint message containing "Worked for" and the collapsed tool count
+		const sendCalls = apiCalls.filter((c) => c.method === "sendMessage");
+		expect(sendCalls).toHaveLength(2);
+
+		// The main response
+		expect(sendCalls[0].payload.text).toBe(
+			toMarkdownV2("Here is the final response."),
+		);
+
+		// The concluded tool hint
+		const toolHintText = sendCalls[1].payload.text as string;
+		expect(toolHintText).toContain("Worked for");
+		expect(toolHintText).toContain(
+			toMarkdownV2("⚙️ search_skills (1x), read_file (1x)"),
+		);
+
+		dateSpy.mockRestore();
+		await channel.stop();
+	});
+
 	it("should recover and discard in-progress streams during the boot/start recovery phase to avoid double messaging", async () => {
 		// 1. Manually write a persisted stream buffer representing an interrupted run using StateManager
 		const mockStreams: Array<[string, unknown]> = [

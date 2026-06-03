@@ -11,7 +11,7 @@ import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getMediaDir, getWorkspaceDir } from "@/config/paths";
 import { logger } from "@/utils/logger";
-import { Channel, type ChannelConfig } from "./base";
+import { Channel, type ChannelConfig, type HandleMessageInput } from "./base";
 
 interface StreamBuffer {
 	text: string;
@@ -28,6 +28,15 @@ export class TelegramChannel extends Channel {
 	private readonly agentLoop?: AgentLoop;
 
 	private streamBufs = new Map<string, StreamBuffer>();
+	private turnStartTimes = new Map<string, number>();
+	private toolStreams = new Map<
+		string,
+		{
+			toolCounts: Map<string, number>;
+			draftId: number;
+			lastEdit: number;
+		}
+	>();
 
 	constructor(
 		bus: MessageBus,
@@ -390,6 +399,60 @@ export class TelegramChannel extends Channel {
 		}
 		this.streamBufs.delete(key);
 		await this.saveStreamsToDisk();
+
+		// Conclude tool hints stream if exists
+		const chatId = buf.chat_id;
+		if (!key.includes("tools-")) {
+			await this.concludeToolHintMessage(chatId);
+		}
+	}
+
+	private async concludeToolHintMessage(chat_id: string): Promise<void> {
+		const toolStream = this.toolStreams.get(chat_id);
+		if (!toolStream) {
+			return;
+		}
+
+		const turnStartTime = this.turnStartTimes.get(chat_id);
+		const elapsedMs = turnStartTime ? Date.now() - turnStartTime : 0;
+		const elapsedSec = Math.max(1, Math.round(elapsedMs / 1000));
+		let timeStr = "";
+		if (elapsedSec >= 60) {
+			const minutes = (elapsedSec / 60).toFixed(1);
+			timeStr = `${minutes} minutes`;
+		} else {
+			timeStr = `${elapsedSec} seconds`;
+		}
+
+		const parts: string[] = [];
+		for (const [name, count] of toolStream.toolCounts.entries()) {
+			parts.push(`${name} (${count}x)`);
+		}
+
+		let collapsedText = "";
+		if (parts.length > 0) {
+			collapsedText = `⚙️ ${parts.join(", ")}`;
+		} else {
+			collapsedText = "No tools executed.";
+		}
+
+		const finalContent = `Worked for ${timeStr}\n${collapsedText}`;
+
+		try {
+			await this.send({
+				channel: this.name,
+				chat_id,
+				content: finalContent,
+			});
+		} catch (err) {
+			logger.error(
+				err,
+				`[Telegram] Failed to conclude tool hint message for chat ${chat_id}`,
+			);
+		} finally {
+			this.toolStreams.delete(chat_id);
+			this.turnStartTimes.delete(chat_id);
+		}
 	}
 
 	private async recoverStreams(): Promise<void> {
@@ -482,6 +545,13 @@ export class TelegramChannel extends Channel {
 		this.bot.stop();
 	}
 
+	protected override async handleMessage(
+		input: HandleMessageInput,
+	): Promise<void> {
+		this.turnStartTimes.set(input.chatId, Date.now());
+		await super.handleMessage(input);
+	}
+
 	async send(msg: OutboundMessage): Promise<void> {
 		const reply = this.toReplyParameters(msg.reply_to);
 		const formattedText = toMarkdownV2(msg.content);
@@ -526,10 +596,59 @@ export class TelegramChannel extends Channel {
 		metadata: MessageMetadata = {},
 	): Promise<void> {
 		const streamEnd = metadata._stream_end === true;
+		const streamId = metadata._stream_id;
+		const isToolStream =
+			typeof streamId === "string" && streamId.startsWith("tools-");
+		const chatId = this.parseNumericChatId(chat_id);
+
+		if (isToolStream) {
+			let toolStream = this.toolStreams.get(chat_id);
+			if (!toolStream) {
+				if (!delta && streamEnd) {
+					return;
+				}
+				const text = delta || "...";
+				const draftId = this.createDraftId();
+				await this.bot.api.sendMessageDraft(chatId, draftId, text);
+				toolStream = {
+					text,
+					toolCounts: new Map<string, number>(),
+					draftId,
+					lastEdit: Date.now(),
+				};
+				this.toolStreams.set(chat_id, toolStream);
+			} else {
+				if (delta) {
+					if (metadata._overwrite === true) {
+						toolStream.text = delta;
+					} else {
+						toolStream.text += delta;
+					}
+				}
+			}
+
+			// Update tool counts
+			if (Array.isArray(metadata._tool_names)) {
+				for (const name of metadata._tool_names) {
+					const count = toolStream.toolCounts.get(name) || 0;
+					toolStream.toolCounts.set(name, count + 1);
+				}
+			}
+
+			const now = Date.now();
+			if (streamEnd || now - toolStream.lastEdit >= this.editIntervalMs) {
+				await this.bot.api.sendMessageDraft(
+					chatId,
+					toolStream.draftId,
+					toolStream.text || "...",
+				);
+				toolStream.lastEdit = now;
+			}
+			return;
+		}
 
 		const key = this.streamKey(chat_id, metadata);
 		let buf = this.streamBufs.get(key);
-		const chatId = this.parseNumericChatId(chat_id);
 
 		if (!buf) {
 			if (!delta && streamEnd) {
@@ -557,6 +676,7 @@ export class TelegramChannel extends Channel {
 				});
 				this.streamBufs.delete(key);
 				await this.saveStreamsToDisk();
+				await this.concludeToolHintMessage(chat_id);
 			}
 			return;
 		}
@@ -588,6 +708,7 @@ export class TelegramChannel extends Channel {
 			});
 			this.streamBufs.delete(key);
 			await this.saveStreamsToDisk();
+			await this.concludeToolHintMessage(chat_id);
 		}
 	}
 

@@ -211,6 +211,7 @@ export class AgentEventObserver {
 			metadata: {
 				_stream_id: `tools-${this.streamId}`,
 				_stream_delta: true,
+				_tool_names: toolNames,
 			},
 		});
 	}
