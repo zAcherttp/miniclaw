@@ -71,8 +71,6 @@ describe("TaskScheduler Daemon & Outbound programmatic dispatch", () => {
 			timestamp: new Date().toISOString(),
 		};
 		await StateManager.saveLastActiveChat(activeSession);
-
-		globalThis.messageBus = bus;
 	});
 
 	afterEach(async () => {

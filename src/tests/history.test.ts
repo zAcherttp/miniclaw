@@ -88,27 +88,6 @@ describe("Thread History & Context Engineering Manager", () => {
 			expect((reloadStore.messages[3] as ToolMessage).name).toBe("read_file");
 		});
 
-		it("should archive checkpoint file correctly", async () => {
-			const store = new FileCheckpointSaver(chatId);
-			store.messages = [new HumanMessage("archived msg")];
-			await store.save();
-
-			await store.archive();
-			expect(store.messages).toEqual([]);
-
-			const reloadStore = new FileCheckpointSaver(chatId);
-			await reloadStore.load();
-			expect(reloadStore.messages).toEqual([]);
-
-			// Check that an archived file exists in the directory
-			const sessionsDir = path.join(tempHome, ".miniclaw", "sessions", chatId);
-			const files = await fs.readdir(sessionsDir);
-			const archiveFile = files.find(
-				(f) => f.startsWith("checkpoint_") && f.endsWith(".json"),
-			);
-			expect(archiveFile).toBeDefined();
-		});
-
 		it("should clear checkpoint file correctly", async () => {
 			const store = new FileCheckpointSaver(chatId);
 			store.messages = [new HumanMessage("wipe me")];

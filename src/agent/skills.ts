@@ -103,13 +103,6 @@ export class SkillsManager {
 	}
 
 	/**
-	 * Parses and type-validates YAML string against a Zod schema.
-	 */
-	public static parseYamlAs<T>(yamlStr: string, schema: z.ZodType<T>): T {
-		return schema.parse(SkillsManager.parseYaml(yamlStr));
-	}
-
-	/**
 	 * Parses and type-validates YAML frontmatter enclosed in --- blocks against a Zod schema.
 	 */
 	public static parseFrontmatterAs<T>(
@@ -124,23 +117,6 @@ export class SkillsManager {
 		try {
 			const rawMetadata = SkillsManager.parseYaml(match[1]);
 			const metadata = schema.parse(rawMetadata);
-			return { metadata, body: match[2] };
-		} catch {
-			return { metadata: null, body: content };
-		}
-	}
-
-	/**
-	 * Parses YAML frontmatter enclosed in --- blocks.
-	 */
-	public static parseFrontmatter(content: string): {
-		metadata: Record<string, unknown> | null;
-		body: string;
-	} {
-		const match = content.match(/^---\r?\n([\s\S]+?)\r?\n---\r?\n([\s\S]*)$/);
-		if (!match) return { metadata: null, body: content };
-		try {
-			const metadata = SkillsManager.parseYaml(match[1]);
 			return { metadata, body: match[2] };
 		} catch {
 			return { metadata: null, body: content };

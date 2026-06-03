@@ -66,7 +66,6 @@ export class AgentLoop {
 	constructor(config: AppConfig, bus: MessageBus) {
 		this.config = config;
 		this.bus = bus;
-		globalThis.messageBus = bus;
 	}
 
 	async cancelChat(chatId: string): Promise<boolean> {

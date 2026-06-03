@@ -147,7 +147,3 @@ export class MessageBus {
 		return `${msg.channel}:${msg.chat_id}:${msg.sender_id}`;
 	}
 }
-
-declare global {
-	var messageBus: MessageBus | undefined;
-}

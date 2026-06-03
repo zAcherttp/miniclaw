@@ -151,23 +151,4 @@ export class FileCheckpointSaver {
 			console.error("[FileCheckpointSaver] Failed to clear checkpoint:", err);
 		}
 	}
-
-	/**
-	 * Archives current checkpoint by renaming checkpoint.json to checkpoint_<timestamp>.json
-	 */
-	async archive(): Promise<void> {
-		try {
-			await fs.access(this.filePath);
-			const sessionsDir = path.dirname(this.filePath);
-			const timestamp = Math.floor(Date.now() / 1000);
-			const archivePath = path.join(
-				sessionsDir,
-				`checkpoint_${timestamp}.json`,
-			);
-			await fs.rename(this.filePath, archivePath);
-			this.messages = [];
-		} catch {
-			// file doesn't exist, nothing to archive
-		}
-	}
 }
