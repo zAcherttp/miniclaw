@@ -177,7 +177,7 @@ Use lark-cli to query Lark calendar.`;
 				channel: "telegram",
 				chat_id: "test-chat",
 				content: expect.stringContaining(
-					"compacting conversation and extracting workflows",
+					"Compacting conversation and extracting workflows",
 				),
 			}),
 		);
@@ -185,7 +185,7 @@ Use lark-cli to query Lark calendar.`;
 			expect.objectContaining({
 				channel: "telegram",
 				chat_id: "test-chat",
-				content: expect.stringContaining("conversation compacted:"),
+				content: expect.stringContaining("Conversation compacted:"),
 			}),
 		);
 		expect(mockBus.publishOutbound).toHaveBeenCalledWith(

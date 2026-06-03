@@ -518,7 +518,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		// Verify the outbound compaction message was sent
 		expect(publishOutboundSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
-				content: expect.stringContaining("conversation compacted:"),
+				content: expect.stringContaining("Conversation compacted:"),
 				chat_id: "chatCron",
 			}),
 		);

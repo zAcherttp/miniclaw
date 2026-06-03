@@ -275,7 +275,7 @@ export async function forceCompactMessages(
 		await bus.publishOutbound({
 			channel,
 			chat_id: chatId,
-			content: "`compacting conversation and extracting workflows`",
+			content: "Compacting conversation and extracting workflows",
 		});
 
 		// 2. Run message compaction and workflow extraction (which also runs daily profiling internally)
@@ -290,7 +290,7 @@ export async function forceCompactMessages(
 			);
 
 		const tokensAfter = estimateMessagesTokens(compactedMessages);
-		const statsMsg = `\`conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}\``;
+		const statsMsg = `Conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`;
 
 		let historyMsg = statsMsg;
 		if (newWorkflowName) {
