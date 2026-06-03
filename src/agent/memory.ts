@@ -181,13 +181,15 @@ export class MemoryManager {
 	/**
 	 * Saves a single fact to the semantic store. Generates embedding gracefully.
 	 */
-	public async saveFact(content: string): Promise<boolean> {
+	public async saveFact(
+		content: string,
+		key?: string | null,
+	): Promise<string | null> {
 		try {
 			const embeddings = EmbeddingsFactory.create(this.config);
 			const embedding = await embedText(embeddings, content);
 
-			const factId = crypto.randomUUID();
-			const factKey = `fact_${factId}`;
+			const factKey = key || `fact_${crypto.randomUUID()}`;
 			const factData: FactMemory = {
 				content,
 				embedding: embedding || [], // Graceful fallback to empty array if offline
@@ -203,10 +205,10 @@ export class MemoryManager {
 			} else {
 				logger.info(`[MemoryManager] Fact saved successfully with embedding.`);
 			}
-			return true;
+			return factKey;
 		} catch (err) {
 			logger.error(err, "[MemoryManager] Error saving fact");
-			return false;
+			return null;
 		}
 	}
 
@@ -216,7 +218,7 @@ export class MemoryManager {
 	public async searchFacts(
 		query: string,
 		limit = 5,
-	): Promise<Array<{ content: string; similarity: number }>> {
+	): Promise<Array<{ key: string; content: string; similarity: number }>> {
 		if (!this.store) await this.init();
 		if (!this.store) return [];
 		const store = this.store;
@@ -231,13 +233,18 @@ export class MemoryManager {
 				return await this.searchFactsKeywordFallback(query, limit);
 			}
 
-			const matched: Array<{ content: string; similarity: number }> = [];
+			const matched: Array<{
+				key: string;
+				content: string;
+				similarity: number;
+			}> = [];
 
 			for await (const key of store.yieldKeys("fact_")) {
 				const fact = await this.get<FactMemory>(key);
 				if (fact?.embedding && fact.embedding.length > 0) {
 					const sim = cosineSimilarity(queryEmbedding, fact.embedding);
 					matched.push({
+						key,
 						content: fact.content,
 						similarity: sim,
 					});
@@ -246,6 +253,7 @@ export class MemoryManager {
 					const sim = this.keywordScore(query, fact.content);
 					if (sim >= 0.4) {
 						matched.push({
+							key,
 							content: fact.content,
 							similarity: sim,
 						});
@@ -284,17 +292,19 @@ export class MemoryManager {
 	private async searchFactsKeywordFallback(
 		query: string,
 		limit: number,
-	): Promise<Array<{ content: string; similarity: number }>> {
+	): Promise<Array<{ key: string; content: string; similarity: number }>> {
 		if (!this.store) await this.init();
 		if (!this.store) return [];
 		const store = this.store;
-		const matched: Array<{ content: string; similarity: number }> = [];
+		const matched: Array<{ key: string; content: string; similarity: number }> =
+			[];
 		for await (const key of store.yieldKeys("fact_")) {
 			const fact = await this.get<FactMemory>(key);
 			if (fact?.content) {
 				const sim = this.keywordScore(query, fact.content);
 				if (sim >= 0.4) {
 					matched.push({
+						key,
 						content: fact.content,
 						similarity: sim,
 					});
@@ -431,6 +441,7 @@ Do NOT wrap the JSON in markdown blocks or include any other conversational prea
 				err,
 				`[MemoryManager] Failed to run daily auto-summarization`,
 			);
+			throw err;
 		}
 	}
 
@@ -450,6 +461,7 @@ Do NOT wrap the JSON in markdown blocks or include any other conversational prea
 			}
 		} catch (err) {
 			logger.error(err, "[MemoryManager] Error in runDailyCronIfNeeded");
+			throw err;
 		}
 	}
 }

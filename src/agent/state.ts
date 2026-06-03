@@ -1,6 +1,7 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
 import path from "node:path";
+import type { InboundMessage } from "@/bus/message";
 import { getAppDir } from "@/config/paths";
 import { logger } from "@/utils/logger";
 import type { ActiveChatSession } from "./types/reminder";
@@ -9,12 +10,14 @@ export interface AppState {
 	lastActiveChat: ActiveChatSession | null;
 	skillsStats: Record<string, number>;
 	telegramStreams: Array<[string, unknown]>; // Serialized StreamBuffer map using unknown
+	activeRequests: Record<string, InboundMessage>;
 }
 
 export const DEFAULT_APP_STATE: AppState = {
 	lastActiveChat: null,
 	skillsStats: {},
 	telegramStreams: [],
+	activeRequests: {},
 };
 
 // Export StateManager as a plain object to satisfy biome lints (avoid static-only class)
@@ -40,6 +43,9 @@ export const StateManager = {
 					telegramStreams: parsed.telegramStreams
 						? [...parsed.telegramStreams]
 						: [],
+					activeRequests: parsed.activeRequests
+						? { ...parsed.activeRequests }
+						: {},
 				};
 			}
 		} catch (err) {
@@ -52,6 +58,7 @@ export const StateManager = {
 			lastActiveChat: null,
 			skillsStats: {},
 			telegramStreams: [],
+			activeRequests: {},
 		};
 	},
 
@@ -127,6 +134,31 @@ export const StateManager = {
 	async saveTelegramStreams(streams: Array<[string, unknown]>): Promise<void> {
 		await this.queueUpdate((state) => {
 			state.telegramStreams = streams;
+		});
+	},
+
+	/**
+	 * Specialized Sub-APIs: Active / In-flight request state tracking
+	 */
+	async getActiveRequests(): Promise<Record<string, InboundMessage>> {
+		const state = await this.load();
+		return state.activeRequests || {};
+	},
+
+	async saveActiveRequest(chatId: string, msg: InboundMessage): Promise<void> {
+		await this.queueUpdate((state) => {
+			if (!state.activeRequests) {
+				state.activeRequests = {};
+			}
+			state.activeRequests[chatId] = msg;
+		});
+	},
+
+	async clearActiveRequest(chatId: string): Promise<void> {
+		await this.queueUpdate((state) => {
+			if (state.activeRequests) {
+				delete state.activeRequests[chatId];
+			}
 		});
 	},
 };

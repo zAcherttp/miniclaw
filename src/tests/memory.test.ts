@@ -189,6 +189,50 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 			expect(recRes).toContain("loves dark mode");
 		});
 
+		it("should update an existing fact using a reference key with the remember tool", async () => {
+			const manager = memoryModule.MemoryManager.getInstance(mockConfig);
+			await manager.init();
+
+			const mockEmbeddings: EmbeddingsLike = {
+				embedQuery: vi.fn(async () => {
+					return [1, 0, 0];
+				}),
+			};
+			vi.spyOn(memoryModule.EmbeddingsFactory, "create").mockReturnValue(
+				mockEmbeddings,
+			);
+
+			const rememberTool = createRememberTool(mockConfig);
+			const recallTool = createRecallTool(mockConfig);
+
+			// 1. Remember initial fact
+			const remRes1 = await rememberTool.invoke({
+				content: "Original fact text",
+			});
+			expect(remRes1).toContain("Successfully remembered fact with key");
+
+			// Extract key from response
+			const keyMatch = remRes1.match(/key "([^"]+)"/);
+			expect(keyMatch).not.toBeNull();
+			const factKey = keyMatch?.[1] || "";
+			expect(factKey).toContain("fact_");
+
+			// 2. Remember updated fact using the key
+			const remRes2 = await rememberTool.invoke({
+				key: factKey,
+				content: "Updated fact text",
+			});
+			expect(remRes2).toContain(
+				`Successfully remembered fact with key "${factKey}"`,
+			);
+
+			// 3. Recall the fact and verify it has the updated text
+			const recRes = await recallTool.invoke({ query: "fact" });
+			expect(recRes).toContain(factKey);
+			expect(recRes).toContain("Updated fact text");
+			expect(recRes).not.toContain("Original fact text");
+		});
+
 		it("should return no memories when embeddings are low similarity despite a saved fact", async () => {
 			const manager = memoryModule.MemoryManager.getInstance(mockConfig);
 			await manager.init();

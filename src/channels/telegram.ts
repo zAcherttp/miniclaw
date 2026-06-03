@@ -219,9 +219,11 @@ export class TelegramChannel extends Channel {
 						this.agentLoop?.config?.agent?.model ||
 						process.env.CHAT_MODEL ||
 						"unknown";
+					const reasoningEffort =
+						this.agentLoop?.config?.agent?.reasoning_effort || "none";
 					const workspace = this.agentLoop?.config?.workspace_dir || "unknown";
 
-					const replyText = `✨ *Miniclaw Bot Status*\n\n🤖 *Active Model:* \`${activeModel}\`\n💬 *Active Message Count:* \`${messages.length}\`\n⚡ *Task Status:* \`${isActive ? "ACTIVE ⚡" : "IDLE 💤"}\`\n📁 *Workspace:* \`${workspace}\``;
+					const replyText = `✨ *Miniclaw Bot Status*\n\n🤖 *Active Model:* \`${activeModel}\`\n🧠 *Reasoning Setting:* \`${reasoningEffort}\`\n💬 *Active Message Count:* \`${messages.length}\`\n⚡ *Task Status:* \`${isActive ? "ACTIVE ⚡" : "IDLE 💤"}\`\n📁 *Workspace:* \`${workspace}\``;
 
 					logger.info(
 						`[Telegram] Status details printed: activeModel=${activeModel}, messagesCount=${messages.length}, isActive=${isActive}`,
@@ -323,7 +325,17 @@ export class TelegramChannel extends Channel {
 
 	private async saveStreamsToDisk(): Promise<void> {
 		try {
-			const entries = Array.from(this.streamBufs.entries());
+			const entries = Array.from(this.streamBufs.entries()).map(
+				([key, buf]) => {
+					return [
+						key,
+						{
+							...buf,
+							text: "", // Clear the text buffer to keep disk writes lightweight
+						},
+					];
+				},
+			);
 			await StateManager.saveTelegramStreams(entries);
 		} catch (err) {
 			logger.error(err, "[Telegram] Failed to save streams to StateManager");
@@ -343,12 +355,37 @@ export class TelegramChannel extends Channel {
 
 	async concludeStream(key: string, buf: StreamBuffer): Promise<void> {
 		logger.info(`[Telegram] Concluding stream for key ${key}`);
-		await this.send({
-			channel: this.name,
-			chat_id: buf.chat_id,
-			content: buf.text || "...",
-			reply_to: this.replyToFromMetadata(buf.metadata ?? {}),
-		});
+		let attempt = 0;
+		let delay = 1000;
+		while (true) {
+			try {
+				await this.send({
+					channel: this.name,
+					chat_id: buf.chat_id,
+					content: buf.text || "...",
+					reply_to: this.replyToFromMetadata(buf.metadata ?? {}),
+				});
+				break;
+			} catch (err) {
+				attempt++;
+				logger.error(
+					err,
+					`[Telegram] Failed to conclude stream for key ${key} (attempt ${attempt}).`,
+				);
+				const errMsg = (err as Error)?.message || "";
+				if (
+					errMsg.includes("Bad Request") &&
+					!errMsg.includes("can't parse entities")
+				) {
+					break; // Break on permanent non-parse-mode bad requests
+				}
+				if (attempt >= 5) {
+					throw err;
+				}
+				await new Promise((resolve) => setTimeout(resolve, delay));
+				delay *= 2;
+			}
+		}
 		this.streamBufs.delete(key);
 		await this.saveStreamsToDisk();
 	}
@@ -358,18 +395,10 @@ export class TelegramChannel extends Channel {
 			await this.loadStreamsFromDisk();
 			if (this.streamBufs.size > 0) {
 				logger.info(
-					`[Telegram] Recovering ${this.streamBufs.size} streaming in-progress messages...`,
+					`[Telegram] Discarding ${this.streamBufs.size} orphaned streaming message states on startup (retry loop will handle active request)...`,
 				);
-				for (const [key, buf] of Array.from(this.streamBufs.entries())) {
-					try {
-						await this.concludeStream(key, buf);
-					} catch (err) {
-						logger.error(
-							err,
-							`[Telegram] Failed to conclude stream for key ${key} during recovery`,
-						);
-					}
-				}
+				this.streamBufs.clear();
+				await this.saveStreamsToDisk();
 			}
 		} catch (err) {
 			logger.error(err, "[Telegram] Failed to recover streams");
@@ -454,14 +483,39 @@ export class TelegramChannel extends Channel {
 	async send(msg: OutboundMessage): Promise<void> {
 		const reply = this.toReplyParameters(msg.reply_to);
 		const formattedText = toMarkdownV2(msg.content);
-		await this.bot.api.sendMessage(
-			this.parseChatId(msg.chat_id),
-			formattedText,
-			{
-				parse_mode: "MarkdownV2",
-				reply_parameters: reply,
-			},
-		);
+		try {
+			await this.bot.api.sendMessage(
+				this.parseChatId(msg.chat_id),
+				formattedText,
+				{
+					parse_mode: "MarkdownV2",
+					reply_parameters: reply,
+				},
+			);
+		} catch (err) {
+			const errMsg = (err as Error)?.message || "";
+			if (
+				errMsg.includes("can't parse entities") ||
+				errMsg.includes("parse_mode") ||
+				(err as { description?: string })?.description?.includes(
+					"can't parse entities",
+				)
+			) {
+				logger.warn(
+					err,
+					`[Telegram] Failed to send message with MarkdownV2 for chat ${msg.chat_id}. Falling back to plain text.`,
+				);
+				await this.bot.api.sendMessage(
+					this.parseChatId(msg.chat_id),
+					msg.content,
+					{
+						reply_parameters: reply,
+					},
+				);
+			} else {
+				throw err;
+			}
+		}
 	}
 
 	async sendDelta(
@@ -511,7 +565,6 @@ export class TelegramChannel extends Channel {
 			} else {
 				buf.text += delta;
 			}
-			await this.saveStreamsToDisk();
 		}
 
 		const now = Date.now();
@@ -522,7 +575,6 @@ export class TelegramChannel extends Channel {
 				buf.text || "...",
 			);
 			buf.last_edit = now;
-			await this.saveStreamsToDisk();
 		}
 
 		if (streamEnd) {
@@ -653,6 +705,16 @@ export function toMarkdownV2(text: string): string {
 	};
 
 	while (i < text.length) {
+		const isStartOfLine = i === 0 || text[i - 1] === "\n";
+
+		// Helper to find closing tag on the same line
+		const getSameLineEnd = (marker: string, startIdx: number) => {
+			const nextNewline = text.indexOf("\n", startIdx);
+			const searchLimit = nextNewline === -1 ? text.length : nextNewline;
+			const sub = text.substring(0, searchLimit);
+			return sub.indexOf(marker, startIdx);
+		};
+
 		// 1. Code blocks (```)
 		if (text.startsWith("```", i)) {
 			const end = text.indexOf("```", i + 3);
@@ -673,8 +735,8 @@ export function toMarkdownV2(text: string): string {
 
 		// 2. Inline code (`)
 		if (text.startsWith("`", i)) {
-			const end = text.indexOf("`", i + 1);
-			if (end !== -1) {
+			const end = getSameLineEnd("`", i + 1);
+			if (end !== -1 && end > i + 1) {
 				const code = text.substring(i + 1, end);
 				result += `\`${escapeInlineCode(code)}\``;
 				i = end + 1;
@@ -684,8 +746,8 @@ export function toMarkdownV2(text: string): string {
 
 		// 3. Bold (**bold**)
 		if (text.startsWith("**", i)) {
-			const end = text.indexOf("**", i + 2);
-			if (end !== -1) {
+			const end = getSameLineEnd("**", i + 2);
+			if (end !== -1 && end > i + 2) {
 				const boldContent = text.substring(i + 2, end);
 				// Bold in MarkdownV2 is single *
 				result += `*${toMarkdownV2(boldContent)}*`;
@@ -696,8 +758,8 @@ export function toMarkdownV2(text: string): string {
 
 		// 4. Bold / Underline (__bold__ or __underline__)
 		if (text.startsWith("__", i)) {
-			const end = text.indexOf("__", i + 2);
-			if (end !== -1) {
+			const end = getSameLineEnd("__", i + 2);
+			if (end !== -1 && end > i + 2) {
 				const content = text.substring(i + 2, end);
 				result += `__${toMarkdownV2(content)}__`;
 				i = end + 2;
@@ -706,7 +768,6 @@ export function toMarkdownV2(text: string): string {
 		}
 
 		// 5. Italic (*italic*)
-		const isStartOfLine = i === 0 || text[i - 1] === "\n";
 		if (text.startsWith("* ", i) && isStartOfLine) {
 			result += "\\* ";
 			i += 2;
@@ -714,8 +775,8 @@ export function toMarkdownV2(text: string): string {
 		}
 
 		if (text.startsWith("*", i)) {
-			const end = text.indexOf("*", i + 1);
-			if (end !== -1) {
+			const end = getSameLineEnd("*", i + 1);
+			if (end !== -1 && end > i + 1) {
 				const italicContent = text.substring(i + 1, end);
 				// Italic in MarkdownV2 is single _
 				result += `_${toMarkdownV2(italicContent)}_`;
@@ -726,8 +787,8 @@ export function toMarkdownV2(text: string): string {
 
 		// 6. Italic (_italic_)
 		if (text.startsWith("_", i)) {
-			const end = text.indexOf("_", i + 1);
-			if (end !== -1) {
+			const end = getSameLineEnd("_", i + 1);
+			if (end !== -1 && end > i + 1) {
 				const italicContent = text.substring(i + 1, end);
 				result += `_${toMarkdownV2(italicContent)}_`;
 				i = end + 1;
@@ -737,8 +798,8 @@ export function toMarkdownV2(text: string): string {
 
 		// 7. Strikethrough (~strikethrough~)
 		if (text.startsWith("~", i)) {
-			const end = text.indexOf("~", i + 1);
-			if (end !== -1) {
+			const end = getSameLineEnd("~", i + 1);
+			if (end !== -1 && end > i + 1) {
 				const strikethroughContent = text.substring(i + 1, end);
 				result += `~${toMarkdownV2(strikethroughContent)}~`;
 				i = end + 1;
@@ -748,10 +809,14 @@ export function toMarkdownV2(text: string): string {
 
 		// 8. Link [label](url)
 		if (text.startsWith("[", i)) {
-			const closeBracket = text.indexOf("]", i + 1);
-			if (closeBracket !== -1 && text.startsWith("(", closeBracket + 1)) {
-				const closeParen = text.indexOf(")", closeBracket + 2);
-				if (closeParen !== -1) {
+			const closeBracket = getSameLineEnd("]", i + 1);
+			if (
+				closeBracket !== -1 &&
+				closeBracket > i + 1 &&
+				text.startsWith("(", closeBracket + 1)
+			) {
+				const closeParen = getSameLineEnd(")", closeBracket + 2);
+				if (closeParen !== -1 && closeParen > closeBracket + 2) {
 					const label = text.substring(i + 1, closeBracket);
 					const url = text.substring(closeBracket + 2, closeParen);
 					result += `[${toMarkdownV2(label)}](${escapeUrl(url)})`;

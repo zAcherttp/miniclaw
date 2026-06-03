@@ -296,11 +296,11 @@ describe("Telegram Channel Integration & Recovery", () => {
 		expect(draftCall?.payload.text).toBe("My first delta");
 		expect(draftCall?.payload.chat_id).toBe(12345);
 
-		// Verify streams exist in StateManager and contain the stream buffer
+		// Verify streams exist in StateManager and contain the stream buffer (with empty text for performance)
 		const streams = await StateManager.getTelegramStreams();
 		expect(streams).toHaveLength(1);
 		expect(streams[0][0]).toBe("12345");
-		expect((streams[0][1] as { text: string }).text).toBe("My first delta");
+		expect((streams[0][1] as { text: string }).text).toBe("");
 
 		// Send second delta concluding the stream
 		apiCalls.length = 0;
@@ -322,7 +322,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 		await channel.stop();
 	});
 
-	it("should recover and conclude in-progress streams during the boot/start recovery phase", async () => {
+	it("should recover and discard in-progress streams during the boot/start recovery phase to avoid double messaging", async () => {
 		// 1. Manually write a persisted stream buffer representing an interrupted run using StateManager
 		const mockStreams: Array<[string, unknown]> = [
 			[
@@ -349,31 +349,14 @@ describe("Telegram Channel Integration & Recovery", () => {
 		) => {
 			const payloadRecord = payload as Record<string, unknown>;
 			apiCalls.push({ method, payload: payloadRecord });
-			return {
-				ok: true,
-				result: {
-					message_id: 2002,
-					chat: {
-						id: payloadRecord.chat_id,
-						type: "private",
-					},
-					date: Math.floor(Date.now() / 1000),
-					text: payloadRecord.text,
-				},
-			};
+			return { ok: true, result: {} };
 		}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
 
 		// Start the channel -> this triggers recovery
 		await channel.start();
 
-		// 3. Verify that the channel loaded the persisted stream and called concludeStream
-		expect(apiCalls.some((c) => c.method === "sendMessage")).toBe(true);
-		const sendCall = apiCalls.find((c) => c.method === "sendMessage");
-		expect(sendCall?.payload.chat_id).toBe(98765);
-		expect(sendCall?.payload.text).toBe(
-			toMarkdownV2("This stream was in progress when the app crashed."),
-		);
-		expect(sendCall?.payload.reply_parameters).toEqual({ message_id: 42 });
+		// 3. Verify that no sendMessage was called (since it should be silently discarded)
+		expect(apiCalls.some((c) => c.method === "sendMessage")).toBe(false);
 
 		// Verify stream buffer has been deleted from StateManager
 		const streamsOnDisk = await StateManager.getTelegramStreams();
@@ -425,7 +408,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 				cancelChat: vi.fn().mockResolvedValue(true),
 				isChatActive: vi.fn().mockReturnValue(true),
 				config: {
-					agent: { model: "gemma2" },
+					agent: { model: "gemma2", reasoning_effort: "medium" },
 					workspace_dir: "/path/to/workspace",
 				},
 			} as unknown as AgentLoop;
@@ -460,6 +443,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 			expect(apiCalls[0].method).toBe("sendMessage");
 			expect(apiCalls[0].payload.text).toContain("Miniclaw Bot Status");
 			expect(apiCalls[0].payload.text).toContain("gemma2");
+			expect(apiCalls[0].payload.text).toContain("medium");
 			expect(apiCalls[0].payload.text).toContain("ACTIVE");
 			expect(apiCalls[0].payload.text).toContain("/path/to/workspace");
 

@@ -17,16 +17,35 @@ import { FileCheckpointSaver } from "./store";
 const INBOUND_BATCH_MAX_CONTENT_LENGTH = 1200;
 const INBOUND_BATCH_DEBOUNCE_MS = 250;
 
-export const DEFAULT_SYSTEM_PROMPT = `You are a deep agent, codename miniclaw, an AI assistant that helps users accomplish tasks using tools. You respond with text and tool calls. The user can see your responses and tool outputs in real time.
+export const DEFAULT_SYSTEM_PROMPT = `You are Miniclaw, a persistent tool-first AI assistant. You respond with text and tool calls. The user sees your responses and tool outputs in real time.
 
 ## Core Behavior
 - Be concise and direct. Don't over-explain unless asked.
-- NEVER add unnecessary preamble ( "Sure!", "Great question!", "I'll now..." ).
-- Don't say "I'll now do X" — just do it.
-- If the request is underspecified, ask only the minimum followup needed to take the next useful action.
+- No preamble. Never say "Sure!", "Great question!", or "I'll now do X" — just do it.
+- If underspecified, ask only the minimum needed to take the next useful action.
+- Don't narrate tool calls. Let the output speak; explain a result only if it's ambiguous.
 
 ## Progress Updates
-For longer tasks, provide brief progress updates at reasonable intervals — a concise sentence recapping what you've done and what's next.`;
+For longer tasks, give a brief update at reasonable intervals — one sentence on what's done and what's next.
+
+## Memory Policy
+You have access to \`recall\` and \`remember\` tools backed by a persistent long-term memory store that may contain context absent from the current conversation window.
+
+### When to recall
+Call \`recall\` before responding whenever the answer plausibly depends on prior context — user details, past decisions, preferences, ongoing work, or anything previously discussed. Responding with "I don't have that information" without first attempting recall is incorrect behavior. Skip recall only for general-knowledge questions that require no personal or session context.
+
+### When and how to remember
+Proactively save information whenever it would meaningfully change how you respond in a future conversation — facts, decisions, corrections, preferences, or ongoing context. Every write must follow this two-step sequence:
+
+1. **Scan** — Call \`recall\` with a relevant query to check whether a related fact already exists.
+2. **Write** — Based on the result:
+   - Related memory found → call \`remember\` with that entry's \`key\` to overwrite/update it.
+   - No related memory found → call \`remember\` without a key to insert a new fact.
+
+Calling \`remember\` without a preceding \`recall\` is strictly prohibited.
+
+### Ground truth assumption
+Treat in-context knowledge as incomplete by default. Long-term memory is the authoritative source for anything context-dependent.`;
 
 export class AgentLoop {
 	public readonly config: AppConfig;
@@ -69,6 +88,9 @@ export class AgentLoop {
 		await this.scheduler.start();
 
 		this.inboundTask = this.processInbound();
+
+		// Recover pending messages on startup
+		void this.recoverPendingMessages();
 	}
 
 	async stop() {
@@ -86,6 +108,27 @@ export class AgentLoop {
 		});
 		await this.inboundTask;
 		logger.info("[AgentLoop] Stopped.");
+	}
+
+	private async recoverPendingMessages() {
+		try {
+			const activeRequests = await StateManager.getActiveRequests();
+			for (const [chatId, msg] of Object.entries(activeRequests)) {
+				logger.info(
+					`[AgentLoop] Recovering pending request for chat ${chatId}...`,
+				);
+				await StateManager.clearActiveRequest(chatId);
+				await this.bus.publishInbound({
+					...msg,
+					metadata: {
+						...(msg.metadata || {}),
+						_is_retry: true,
+					},
+				});
+			}
+		} catch (err) {
+			logger.error(err, "[AgentLoop] Error recovering pending messages");
+		}
 	}
 
 	private async processInbound() {
@@ -138,6 +181,9 @@ export class AgentLoop {
 				const replyTo = msg.metadata?.message_id?.toString();
 				const streamId = `agent-${Date.now()}`;
 
+				let succeeded = false;
+				let aborted = false;
+
 				try {
 					const agent = await createMainAgent(
 						this.config,
@@ -147,9 +193,21 @@ export class AgentLoop {
 					const model = agent.options.model;
 					const tools = agent.options.tools || [];
 
-					// Append user message to history
-					checkpointer.messages.push(new HumanMessage(msg.content));
-					await checkpointer.save();
+					// Append user message to history if it's not a retry
+					if (!msg.metadata?._is_retry) {
+						checkpointer.messages.push(
+							new HumanMessage({
+								content: msg.content,
+								additional_kwargs: {
+									message_id: msg.metadata?.message_id,
+								},
+							}),
+						);
+						await checkpointer.save();
+					}
+
+					// Save current message as active request in StateManager
+					await StateManager.saveActiveRequest(msg.chat_id, msg);
 
 					// Daily Cron: check if we should run auto-summarization/profiling
 					try {
@@ -160,6 +218,7 @@ export class AgentLoop {
 							err,
 							"[AgentLoop] Failed during daily cron memory update",
 						);
+						throw err; // Propagate to trigger retry
 					}
 
 					// Create decoupled Event Observer
@@ -187,12 +246,14 @@ export class AgentLoop {
 							signal: controller.signal,
 						},
 					);
+					succeeded = true;
 				} catch (e) {
 					if (
 						controller.signal.aborted ||
 						(e as Error)?.name === "AbortError" ||
 						(e as Error)?.message?.includes("aborted")
 					) {
+						aborted = true;
 						logger.info(
 							`[AgentLoop] Execution aborted for chat ${msg.chat_id}`,
 						);
@@ -223,10 +284,35 @@ export class AgentLoop {
 							});
 						} catch {}
 					} else {
-						throw e;
+						// Error occurred, retry with exponential backoff on queue
+						const retryCount = ((msg.metadata?._retryCount as number) || 0) + 1;
+						const delay = Math.min(1000 * 2 ** (retryCount - 1), 10000);
+						logger.error(
+							e,
+							`[AgentLoop] Error processing inbound message for chat ${msg.chat_id}. Retrying (attempt ${retryCount}) in ${delay}ms...`,
+						);
+
+						const updatedMsg = {
+							...msg,
+							metadata: {
+								...(msg.metadata || {}),
+								_retryCount: retryCount,
+								_is_retry: true,
+							},
+						};
+						await StateManager.saveActiveRequest(msg.chat_id, updatedMsg);
+
+						setTimeout(() => {
+							if (this.running) {
+								void this.bus.publishInbound(updatedMsg);
+							}
+						}, delay);
 					}
 				} finally {
 					this.activeExecutions.delete(msg.chat_id);
+					if (succeeded || aborted) {
+						await StateManager.clearActiveRequest(msg.chat_id);
+					}
 				}
 			} catch (e) {
 				if (this.running) {
