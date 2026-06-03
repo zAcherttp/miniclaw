@@ -308,9 +308,10 @@ export class SkillsManager {
 			usageCount: stats[s.name] || 0,
 		}));
 
-		const workflows = skillsWithUsage.filter(
-			(s) => s.metadata?.openclaw?.category === "workflow",
-		);
+		const workflows = skillsWithUsage
+			.filter((s) => s.metadata?.openclaw?.category === "workflow")
+			.sort((a, b) => b.usageCount - a.usageCount)
+			.slice(0, 10);
 		const standardSkills = skillsWithUsage.filter(
 			(s) => s.metadata?.openclaw?.category !== "workflow",
 		);
@@ -325,9 +326,9 @@ export class SkillsManager {
 				"[Skills] Prompt injection skipped: No active standard skills or workflows discovered.",
 			);
 			return (
-				"## SKILLS\n" +
-				"You have access to a rich suite of modular skills. Because you haven't used any skills yet on this session, none are pre-loaded in your prompt catalog.\n" +
-				"To search and discover available skills, you MUST call the `search_skills` tool first to find relevant guidelines and paths."
+				"## SKILLS & WORKFLOWS\n" +
+				"You have access to a rich suite of modular skills and workflows. Because you haven't used any skills or workflows yet on this session, none are pre-loaded in your prompt catalog.\n" +
+				"To search and discover available skills and workflows, you MUST call the `search_skills` tool first to find relevant guidelines and paths."
 			);
 		}
 
@@ -338,7 +339,7 @@ export class SkillsManager {
 		let block = "";
 
 		if (workflows.length > 0) {
-			block += "## ESTABLISHED WORKFLOWS\n";
+			block += "## ESTABLISHED WORKFLOWS (Top 10 most used)\n";
 			block +=
 				"You have access to the following automated workflows. If you need to execute any of these, you MUST first read the detailed instructions inside its corresponding `SKILL.md` using `read_file` before proceeding.\n\n";
 			block += "| Name | Description | Instruction Path | Usages |\n";
@@ -359,11 +360,11 @@ export class SkillsManager {
 				block += `| **${skill.name}** | ${skill.description} | \`${skill.path}\` | ${skill.usageCount} |\n`;
 			}
 			block +=
-				"\nFor other tasks not listed above, call the `search_skills` tool to search the full skill catalog.";
+				"\nFor other tasks not listed above, call the `search_skills` tool to search the full catalog of skills and workflows.";
 		} else {
 			block += "## ACTIVE AGENT SKILLS\n";
 			block +=
-				"To search and discover available general skills, you MUST call the `search_skills` tool first to find relevant guidelines and paths.";
+				"To search and discover available general skills and workflows, you MUST call the `search_skills` tool first to find relevant guidelines and paths.";
 		}
 
 		return block.trim();

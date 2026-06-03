@@ -59,6 +59,7 @@ describe("TaskScheduler Daemon & Outbound programmatic dispatch", () => {
 		tempSandbox = await fs.mkdtemp(
 			path.join(os.tmpdir(), "miniclaw-scheduler-"),
 		);
+		vi.spyOn(os, "homedir").mockReturnValue(tempSandbox);
 		bus = new MessageBus();
 		TaskScheduler.resetInstance();
 
@@ -89,8 +90,8 @@ describe("TaskScheduler Daemon & Outbound programmatic dispatch", () => {
 		const publishInboundSpy = vi.spyOn(bus, "publishInbound");
 		const publishOutboundSpy = vi.spyOn(bus, "publishOutbound");
 
-		// Create a reminder that triggers in 20ms
-		const targetTime = new Date(Date.now() + 20).toISOString();
+		// Create a reminder that triggers in 500ms
+		const targetTime = new Date(Date.now() + 500).toISOString();
 		const reminder: Reminder = {
 			id: "rem-test-1",
 			title: "Critical meeting",
@@ -108,8 +109,8 @@ describe("TaskScheduler Daemon & Outbound programmatic dispatch", () => {
 		// Assert that it is initially pending
 		expect(reminder.status).toBe("pending");
 
-		// Wait 100ms for the timer to fire in the background
-		await new Promise((resolve) => setTimeout(resolve, 100));
+		// Wait 700ms for the timer to fire in the background
+		await new Promise((resolve) => setTimeout(resolve, 700));
 
 		// Verify trigger results:
 		// 1. Status set to fired

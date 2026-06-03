@@ -3,19 +3,8 @@ import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
-// Redirect homedir to a sandbox temp folder for this test BEFORE importing modules that depend on it
+// Redirect homedir to a sandbox temp folder for this test
 const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-telegram-"));
-vi.mock("node:os", async (importOriginal) => {
-	const original = await importOriginal<typeof import("node:os")>();
-	return {
-		...original,
-		default: {
-			...original,
-			homedir: () => tempHome,
-		},
-		homedir: () => tempHome,
-	};
-});
 
 import type { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
@@ -32,6 +21,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 	let bus: MessageBus;
 
 	beforeEach(() => {
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		bus = new MessageBus();
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
@@ -452,7 +442,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 
 		// The concluded tool hint (should be wrapped in blockquote since totalCalls = 3 > 2)
 		const toolHintText = sendCalls[1].payload.text as string;
-		expect(toolHintText).toContain("Worked for 2 seconds");
+		expect(toolHintText).toContain("Worked for 2s");
 		expect(toolHintText).toContain("<blockquote expandable>");
 		expect(toolHintText).toContain('⚙️ Searching skills for "calendar"...');
 		expect(toolHintText).toContain("⚙️ Reading file: SKILL.md...");
@@ -527,7 +517,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 		expect(sendCalls).toHaveLength(2);
 
 		const toolHintText = sendCalls[1].payload.text as string;
-		expect(toolHintText).toContain("Worked for 1 seconds");
+		expect(toolHintText).toContain("Worked for 1s");
 		// Should NOT contain the collapsible blockquote tags
 		expect(toolHintText).not.toContain("<blockquote expandable>");
 		expect(toolHintText).not.toContain("</blockquote>");

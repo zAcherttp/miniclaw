@@ -15,6 +15,72 @@ vi.mock("@/agent/agents", () => ({
 	createMainAgent: vi.fn().mockResolvedValue({
 		options: { model: "ollama:gemma2", tools: [] },
 	}),
+	createConsolidationAgent: vi
+		.fn()
+		.mockImplementation(
+			async (_config, _workspaceDir, _workflow, chatId, bus, channel) => {
+				const { DynamicStructuredTool } = await import("@langchain/core/tools");
+				const { z } = await import("zod");
+				const { StateManager } = await import("@/agent/state");
+				const { logger } = await import("@/utils/logger");
+
+				const concludeConsolidationTool = new DynamicStructuredTool({
+					name: "conclude_consolidation",
+					description:
+						"Concludes the consolidation flow and restores the main agent.",
+					schema: z.object({
+						action: z.enum(["save", "discard"]),
+					}),
+					func: async ({ action }) => {
+						try {
+							const condState =
+								await StateManager.getConsolidationState(chatId);
+							const targetCount = condState?.checkpointMessageCount;
+
+							if (typeof targetCount === "number" && targetCount >= 0) {
+								const { FileCheckpointSaver } = await import("@/agent/store");
+								const checkpointer = new FileCheckpointSaver(chatId);
+								await checkpointer.load();
+								if (targetCount < checkpointer.messages.length) {
+									checkpointer.messages = checkpointer.messages.slice(
+										0,
+										targetCount,
+									);
+									await checkpointer.save();
+									logger.info(
+										`[Consolidation] Wiped consolidation messages from checkpoint for chat ${chatId}. Restored base count: ${targetCount}`,
+									);
+								}
+							}
+
+							await StateManager.clearConsolidationState(chatId);
+							if (bus && channel) {
+								const replyText =
+									action === "save"
+										? "Workflow saved successfully. Control returned to main agent."
+										: "Workflow discarded. Control returned to main agent.";
+								await bus.publishOutbound({
+									channel,
+									chat_id: chatId,
+									content: replyText,
+								});
+							}
+							return `Consolidation concluded with action "${action}". Control returned to main agent.`;
+						} catch (err) {
+							return `Error concluding consolidation: ${(err as Error).message}`;
+						}
+					},
+				});
+
+				return {
+					options: {
+						model: "ollama:gemma2",
+						tools: [concludeConsolidationTool],
+					},
+				};
+			},
+		),
+	CONSOLIDATION_SYSTEM_PROMPT: "Mock prompt {{PROPOSED_WORKFLOW}}",
 }));
 
 vi.mock("@/agent/models", () => ({
@@ -25,17 +91,6 @@ vi.mock("@/agent/models", () => ({
 
 // Sandbox homedir to isolate checkpoints
 const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-retry-"));
-vi.mock("node:os", async (importOriginal) => {
-	const original = await importOriginal<typeof import("node:os")>();
-	return {
-		...original,
-		default: {
-			...original,
-			homedir: () => tempHome,
-		},
-		homedir: () => tempHome,
-	};
-});
 
 import { AgentLoop } from "@/agent/loop";
 import { StateManager } from "@/agent/state";
@@ -46,7 +101,8 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 	let bus: MessageBus;
 	let config: AppConfig;
 
-	beforeEach(() => {
+	beforeEach(async () => {
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		bus = new MessageBus();
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
@@ -68,6 +124,12 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		} as unknown as AppConfig;
 
 		mockGraphInvoke.mockReset();
+
+		// Pre-populate last cron dates to prevent daily cron from running in general tests
+		const todayStr = new Date().toISOString().split("T")[0];
+		await StateManager.saveLastCronDate("chat123", todayStr);
+		await StateManager.saveLastCronDate("chat999", todayStr);
+		await StateManager.saveLastCronDate("chatWipe", todayStr);
 	});
 
 	afterEach(() => {
@@ -253,5 +315,216 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		expect(attempt).toBe(3);
 		expect(apiCalls).toHaveLength(3);
 		expect(channel.streamBufs.has("chat-12345")).toBe(false); // Cleared upon success
+	});
+
+	it("should route messages to the consolidation agent when active consolidation is in state", async () => {
+		const { createConsolidationAgent } = await import("@/agent/agents");
+
+		// 1. Enable consolidation state in StateManager
+		await StateManager.saveConsolidationState("chat123", {
+			active: true,
+			proposedWorkflow: "mock-workflow-content",
+		});
+
+		const agentLoop = new AgentLoop(config, bus);
+		await agentLoop.start();
+
+		// 2. Publish inbound request
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chat123",
+			content: "yes, save it",
+			metadata: { message_id: "101" },
+		});
+
+		// Wait for processing (debounce = 250ms)
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		// 3. Verify consolidation agent was created and graph invoke was triggered with it
+		expect(createConsolidationAgent).toHaveBeenCalledWith(
+			config,
+			expect.any(String),
+			"mock-workflow-content",
+			"chat123",
+			bus,
+			"telegram",
+		);
+		expect(mockGraphInvoke).toHaveBeenCalled();
+
+		// Clean up State
+		await StateManager.clearConsolidationState("chat123");
+		await agentLoop.stop();
+	});
+
+	it("should publish a switch message when transitioning between agents", async () => {
+		const publishOutboundSpy = vi.spyOn(bus, "publishOutbound");
+
+		const agentLoop = new AgentLoop(config, bus);
+		await agentLoop.start();
+
+		// 1. First request runs as "main" agent by default.
+		// Since it's the first message, lastActiveAgentType is initialized to "main", so no switch message is sent.
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chat123",
+			content: "hello main",
+			metadata: { message_id: "101" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(publishOutboundSpy).not.toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("You are now talking with"),
+			}),
+		);
+
+		// 2. Set consolidation state to active.
+		await StateManager.saveConsolidationState("chat123", {
+			active: true,
+			proposedWorkflow: "mock-workflow-content",
+		});
+
+		// 3. Send next message. It should switch to "consolidation" agent and send the switch message.
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chat123",
+			content: "yes, save it",
+			metadata: { message_id: "102" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(publishOutboundSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: "You are now talking with consolidation agent.",
+				chat_id: "chat123",
+			}),
+		);
+
+		// 4. Clear consolidation state.
+		await StateManager.clearConsolidationState("chat123");
+		publishOutboundSpy.mockClear();
+
+		// 5. Send next message. It should switch back to "main" agent and send the switch message.
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chat123",
+			content: "hello main again",
+			metadata: { message_id: "103" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 300));
+		expect(publishOutboundSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: "You are now talking with main agent.",
+				chat_id: "chat123",
+			}),
+		);
+
+		await agentLoop.stop();
+	});
+
+	it("should wipe consolidation traces from the main checkpoint when conclude_consolidation is called", async () => {
+		const { createConsolidationAgent } = await import("@/agent/agents");
+		const { FileCheckpointSaver } = await import("@/agent/store");
+		const { HumanMessage } = await import("@langchain/core/messages");
+
+		const agentLoop = new AgentLoop(config, bus);
+		await agentLoop.start();
+
+		// 1. Initial messages in main chat
+		const checkpointer = new FileCheckpointSaver("chatWipe");
+		checkpointer.messages = [new HumanMessage("hello main")];
+		await checkpointer.save();
+
+		const initialLength = checkpointer.messages.length;
+
+		// 2. Activate consolidation state
+		await StateManager.saveConsolidationState("chatWipe", {
+			active: true,
+			proposedWorkflow: "mock-workflow-content",
+		});
+
+		// 3. Send a message to run consolidation agent
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chatWipe",
+			content: "yes, save it",
+			metadata: { message_id: "104" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 300));
+
+		// Verify checkpointMessageCount is saved correctly in the state
+		const condState = await StateManager.getConsolidationState("chatWipe");
+		expect(condState?.checkpointMessageCount).toBe(initialLength);
+
+		// Verify messages list in checkpointer currently has the consolidation messages (which includes "yes, save it")
+		await checkpointer.load();
+		expect(checkpointer.messages.length).toBeGreaterThan(initialLength);
+
+		// 4. Conclude consolidation manually by getting the compiled consolidation agent tools
+		// and invoking conclude_consolidation tool
+		const agentInstance = await createConsolidationAgent(
+			config,
+			config.workspace_dir,
+			"mock-workflow-content",
+			"chatWipe",
+			bus,
+			"telegram",
+		);
+		const concludeTool = agentInstance.options.tools?.find(
+			(t: { name: string }) => t.name === "conclude_consolidation",
+		);
+		expect(concludeTool).toBeDefined();
+
+		// Invoke conclude_consolidation tool
+		await concludeTool.invoke({ action: "save" });
+
+		// 5. Verify consolidation messages are wiped and length returns to initialLength
+		await checkpointer.load();
+		expect(checkpointer.messages.length).toBe(initialLength);
+		expect(checkpointer.messages[0].content).toBe("hello main");
+
+		await agentLoop.stop();
+	});
+
+	it("should run unified compaction daily cron when date changes", async () => {
+		const publishOutboundSpy = vi.spyOn(bus, "publishOutbound");
+
+		const agentLoop = new AgentLoop(config, bus);
+		await agentLoop.start();
+
+		// Pre-populate checkpoint message
+		const { FileCheckpointSaver } = await import("@/agent/store");
+		const { HumanMessage } = await import("@langchain/core/messages");
+		const checkpointer = new FileCheckpointSaver("chatCron");
+		checkpointer.messages = [new HumanMessage("hello world")];
+		await checkpointer.save();
+
+		// We do NOT save the last cron date, so it's null (different from today).
+		// When we publish an inbound message, the daily cron should trigger.
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chatCron",
+			content: "run cron turn",
+			metadata: { message_id: "105" },
+		});
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+
+		// Verify the daily cron ran, compacted history, and updated state date
+		const lastRunDate = await StateManager.getLastCronDate("chatCron");
+		expect(lastRunDate).toBe(new Date().toISOString().split("T")[0]);
+
+		// Verify the outbound compaction message was sent
+		expect(publishOutboundSpy).toHaveBeenCalledWith(
+			expect.objectContaining({
+				content: expect.stringContaining("conversation compacted:"),
+				chat_id: "chatCron",
+			}),
+		);
+
+		await agentLoop.stop();
 	});
 });

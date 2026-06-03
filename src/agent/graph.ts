@@ -7,21 +7,22 @@ import {
 	Annotation,
 	END,
 	MessagesAnnotation,
+	REMOVE_ALL_MESSAGES,
 	START,
 	StateGraph,
 } from "@langchain/langgraph";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
-import { compactAndExtractWorkflows } from "./compaction";
+import { forceCompactMessages } from "./compaction";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
 import { MemoryManager } from "./memory";
-import { applyMessageUpdates, isBeforeModelMiddleware } from "./middleware";
 import type { AgentEventObserver } from "./observer";
 import { SkillsManager } from "./skills";
+import { StateManager } from "./state";
 import { FileCheckpointSaver } from "./store";
 import { getSystemInfoBlock } from "./systemInfo";
-import { estimateMessagesTokens, formatTokens } from "./tokenizer";
+import { estimateMessagesTokens } from "./tokenizer";
 
 interface ToolBoundRunnable {
 	// biome-ignore lint/suspicious/noExplicitAny: stream yields message chunks asynchronously
@@ -47,6 +48,9 @@ interface GraphNodeConfig {
 		observer?: AgentEventObserver;
 		systemPrompt?: string;
 		appConfig?: AppConfig;
+		bus?: MessageBus;
+		channel?: string;
+		isConsolidationActive?: boolean;
 		agent?: {
 			options?: {
 				middleware?: Array<{
@@ -89,131 +93,100 @@ async function agentNode(
 		agentModel: model,
 		agentTools: tools,
 		chatId,
+		channel,
 		observer,
 		systemPrompt: customSystemPrompt,
 		appConfig,
-		agent,
+		bus,
+		isConsolidationActive,
 	} = config?.configurable || {};
 
 	let systemPrompt = observer?.cachedSystemPrompt || "";
 
 	if (!systemPrompt) {
-		// 1. Load latest memory/context guidelines dynamically before model call
-		const memoryContext = workspaceDir
-			? await ContextEngineeringManager.loadMemoryFiles(workspaceDir)
-			: "";
+		if (customSystemPrompt) {
+			systemPrompt = customSystemPrompt;
+		} else {
+			// 1. Load latest memory/context guidelines dynamically before model call
+			const memoryContext = workspaceDir
+				? await ContextEngineeringManager.loadMemoryFiles(workspaceDir)
+				: "";
 
-		// 2. Fetch and inject User Profile & Goals memory dynamically
-		let memoryPrompt = "";
-		if (appConfig) {
-			try {
-				const memoryManager = MemoryManager.getInstance(appConfig);
-				memoryPrompt = await memoryManager.generatePromptBlock();
-			} catch (err) {
-				logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
+			// 2. Fetch and inject User Profile & Goals memory dynamically
+			let memoryPrompt = "";
+			if (appConfig) {
+				try {
+					const memoryManager = MemoryManager.getInstance(appConfig);
+					memoryPrompt = await memoryManager.generatePromptBlock();
+				} catch (err) {
+					logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
+				}
 			}
-		}
 
-		const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
-		let skillsPrompt = "";
-		if (workspaceDir) {
-			try {
-				const loadedSkills = await SkillsManager.loadSkills(
-					workspaceDir,
-					skillsDirs,
-				);
-				const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
-					"workflows",
-				]);
-				skillsPrompt = await SkillsManager.generatePromptBlock([
-					...loadedSkills,
-					...loadedWorkflows,
-				]);
-			} catch (err) {
-				logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
+			const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
+			let skillsPrompt = "";
+			if (workspaceDir) {
+				try {
+					const loadedSkills = await SkillsManager.loadSkills(
+						workspaceDir,
+						skillsDirs,
+					);
+					const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
+						"workflows",
+					]);
+					skillsPrompt = await SkillsManager.generatePromptBlock([
+						...loadedSkills,
+						...loadedWorkflows,
+					]);
+				} catch (err) {
+					logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
+				}
 			}
+
+			const systemInfoBlock = workspaceDir
+				? getSystemInfoBlock(workspaceDir)
+				: "";
+
+			const basePrompt = DEFAULT_SYSTEM_PROMPT;
+			const promptParts = [
+				basePrompt,
+				systemInfoBlock,
+				memoryContext,
+				skillsPrompt,
+				memoryPrompt,
+			].filter(Boolean);
+			systemPrompt = `${promptParts.map((p) => p.trim()).join("\n\n")}\n`;
 		}
-
-		const systemInfoBlock = workspaceDir
-			? getSystemInfoBlock(workspaceDir)
-			: "";
-
-		const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-		const promptParts = [
-			basePrompt,
-			systemInfoBlock,
-			memoryContext,
-			skillsPrompt,
-			memoryPrompt,
-		].filter(Boolean);
-		systemPrompt = `${promptParts.map((p) => p.trim()).join("\n\n")}\n`;
 
 		if (observer) {
 			observer.cachedSystemPrompt = systemPrompt;
 		}
 	}
 
-	// 3. Process built-in middleware (e.g. short-term summarization compaction)
-	let middlewareUpdates: BaseMessage[] | null = null;
+	// 3. Process auto-compaction if messages exceed triggerTokens
 	let messages = [...state.messages];
+	const triggerTokens = appConfig?.agent?.compaction_trigger_tokens ?? 50000;
+	const currentTokens = estimateMessagesTokens(messages);
 
-	const triggerTokens = appConfig?.agent?.compaction_trigger_tokens ?? 220000;
-
-	if (agent?.options && Array.isArray(agent.options.middleware)) {
-		for (const m of agent.options.middleware) {
-			if (isBeforeModelMiddleware(m.beforeModel)) {
-				try {
-					const tokensBefore = estimateMessagesTokens(messages);
-					const updates = await m.beforeModel({ messages }, { context: {} });
-					if (
-						updates &&
-						Array.isArray(updates.messages) &&
-						updates.messages.length > 0
-					) {
-						middlewareUpdates = updates.messages;
-						messages = applyMessageUpdates(messages, updates.messages);
-						const tokensAfter = estimateMessagesTokens(messages);
-
-						// Save compacted messages to the file checkpointer immediately
-						if (chatId) {
-							const checkpointer = new FileCheckpointSaver(chatId);
-							checkpointer.messages = messages;
-							await checkpointer.save();
-						}
-
-						// Trigger background workflow extraction asynchronously
-						if (appConfig && workspaceDir) {
-							void compactAndExtractWorkflows(
-								appConfig,
-								state.messages,
-								workspaceDir,
-							)
-								.then(({ newWorkflowName }) => {
-									if (newWorkflowName) {
-										logger.info(
-											`[AgentNode] Background compaction discovered and created new workflow: ${newWorkflowName}`,
-										);
-									}
-								})
-								.catch((err) => {
-									logger.error(
-										err,
-										"[AgentNode] Error in background workflow extraction",
-									);
-								});
-						}
-
-						// Notify the user via the message bus
-						if (observer) {
-							await observer.publishNotification(
-								`conversation auto compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`,
-							);
-						}
-					}
-				} catch (err) {
-					logger.error(err, `[AgentNode] Failed to run middleware ${m.name}`);
+	if (currentTokens >= triggerTokens) {
+		try {
+			logger.info(
+				`[AgentNode] Auto-compaction triggered: current tokens ${currentTokens} >= trigger tokens ${triggerTokens}`,
+			);
+			if (appConfig && chatId && bus) {
+				const result = await forceCompactMessages(
+					appConfig,
+					messages,
+					chatId,
+					channel || "telegram",
+					bus,
+				);
+				if (result) {
+					messages = result.compacted;
 				}
 			}
+		} catch (err) {
+			logger.error(err, "[AgentNode] Failed auto-compaction");
 		}
 	}
 
@@ -272,14 +245,22 @@ async function agentNode(
 	if (chatId) {
 		const checkpointer = new FileCheckpointSaver(chatId);
 		await checkpointer.load();
-		checkpointer.messages = [...messages, accumulatedMessage];
-		await checkpointer.save();
+
+		const condState = await StateManager.getConsolidationState(chatId);
+		const wasConcludedThisTurn = isConsolidationActive && !condState?.active;
+
+		if (wasConcludedThisTurn) {
+			logger.info(
+				`[AgentNode] Consolidation concluded this turn. Preserving sliced checkpointer on disk.`,
+			);
+		} else {
+			checkpointer.messages = [...messages, accumulatedMessage];
+			await checkpointer.save();
+		}
 	}
 
 	return {
-		messages: middlewareUpdates
-			? [...middlewareUpdates, accumulatedMessage]
-			: [accumulatedMessage],
+		messages: [REMOVE_ALL_MESSAGES, ...messages, accumulatedMessage],
 	};
 }
 
@@ -291,7 +272,12 @@ async function toolsNode(
 	state: typeof AgentState.State,
 	config?: GraphNodeConfig,
 ) {
-	const { agentTools: tools, chatId, observer } = config?.configurable || {};
+	const {
+		agentTools: tools,
+		chatId,
+		observer,
+		isConsolidationActive,
+	} = config?.configurable || {};
 
 	const validTools: GenericTool[] = [];
 	if (Array.isArray(tools)) {
@@ -375,6 +361,19 @@ async function toolsNode(
 	if (chatId) {
 		const checkpointer = new FileCheckpointSaver(chatId);
 		await checkpointer.load();
+
+		const condState = await StateManager.getConsolidationState(chatId);
+		const wasConcludedThisTurn = isConsolidationActive && !condState?.active;
+
+		if (wasConcludedThisTurn) {
+			logger.info(
+				`[ToolsNode] Consolidation concluded this turn. Preserving sliced checkpointer on disk.`,
+			);
+			return {
+				messages: [REMOVE_ALL_MESSAGES, ...checkpointer.messages],
+			};
+		}
+
 		checkpointer.messages = [...state.messages, ...toolMessages];
 		await checkpointer.save();
 	}
@@ -401,12 +400,26 @@ function shouldContinue(state: typeof AgentState.State) {
 	return END;
 }
 
+async function shouldToolsContinue(
+	_state: typeof AgentState.State,
+	config?: GraphNodeConfig,
+): Promise<string> {
+	const { isConsolidationActive, chatId } = config?.configurable || {};
+	if (isConsolidationActive && chatId) {
+		const condState = await StateManager.getConsolidationState(chatId);
+		if (!condState?.active) {
+			return END;
+		}
+	}
+	return "agent";
+}
+
 // Compile the clean declarative ReAct graph
 const workflow = new StateGraph(AgentState)
 	.addNode("agent", agentNode)
 	.addNode("tools", toolsNode)
 	.addEdge(START, "agent")
 	.addConditionalEdges("agent", shouldContinue)
-	.addEdge("tools", "agent");
+	.addConditionalEdges("tools", shouldToolsContinue);
 
 export const compiledGraph = workflow.compile();

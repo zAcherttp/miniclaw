@@ -360,6 +360,15 @@ export class MemoryManager {
 	}
 
 	/**
+	 * Updates the profile state and records the daily summarization timestamp.
+	 */
+	public async updateProfileAndTimestamp(profile: UserProfile): Promise<void> {
+		await this.saveProfile(profile);
+		const todayStr = new Date().toISOString().split("T")[0];
+		await this.set("meta_last_summarization_date", todayStr);
+	}
+
+	/**
 	 * Daily Session Auto-summarizer job. Extracts preferences, traits, and goals.
 	 */
 	public async runDailySummarization(messages: BaseMessage[]): Promise<void> {

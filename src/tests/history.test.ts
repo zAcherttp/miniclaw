@@ -29,6 +29,10 @@ describe("Thread History & Context Engineering Manager", () => {
 		await fs.mkdir(workspaceDir, { recursive: true });
 	});
 
+	beforeEach(() => {
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
+	});
+
 	afterAll(async () => {
 		await fs.rm(tempHome, { recursive: true, force: true });
 		vi.restoreAllMocks();

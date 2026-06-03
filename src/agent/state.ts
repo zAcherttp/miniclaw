@@ -6,11 +6,19 @@ import { getAppDir } from "@/config/paths";
 import { logger } from "@/utils/logger";
 import type { ActiveChatSession } from "./types/reminder";
 
+export interface ConsolidationState {
+	active: boolean;
+	proposedWorkflow: string;
+	checkpointMessageCount?: number;
+}
+
 export interface AppState {
 	lastActiveChat: ActiveChatSession | null;
 	skillsStats: Record<string, number>;
 	telegramStreams: Array<[string, unknown]>; // Serialized StreamBuffer map using unknown
 	activeRequests: Record<string, InboundMessage>;
+	activeConsolidations?: Record<string, ConsolidationState>;
+	lastDailyCronDates?: Record<string, string>;
 }
 
 export const DEFAULT_APP_STATE: AppState = {
@@ -18,6 +26,8 @@ export const DEFAULT_APP_STATE: AppState = {
 	skillsStats: {},
 	telegramStreams: [],
 	activeRequests: {},
+	activeConsolidations: {},
+	lastDailyCronDates: {},
 };
 
 // Export StateManager as a plain object to satisfy biome lints (avoid static-only class)
@@ -46,6 +56,12 @@ export const StateManager = {
 					activeRequests: parsed.activeRequests
 						? { ...parsed.activeRequests }
 						: {},
+					activeConsolidations: parsed.activeConsolidations
+						? { ...parsed.activeConsolidations }
+						: {},
+					lastDailyCronDates: parsed.lastDailyCronDates
+						? { ...parsed.lastDailyCronDates }
+						: {},
 				};
 			}
 		} catch (err) {
@@ -59,6 +75,8 @@ export const StateManager = {
 			skillsStats: {},
 			telegramStreams: [],
 			activeRequests: {},
+			activeConsolidations: {},
+			lastDailyCronDates: {},
 		};
 	},
 
@@ -159,6 +177,47 @@ export const StateManager = {
 			if (state.activeRequests) {
 				delete state.activeRequests[chatId];
 			}
+		});
+	},
+
+	async getConsolidationState(
+		chatId: string,
+	): Promise<ConsolidationState | null> {
+		const state = await this.load();
+		return state.activeConsolidations?.[chatId] || null;
+	},
+
+	async saveConsolidationState(
+		chatId: string,
+		condState: ConsolidationState,
+	): Promise<void> {
+		await this.queueUpdate((state) => {
+			if (!state.activeConsolidations) {
+				state.activeConsolidations = {};
+			}
+			state.activeConsolidations[chatId] = condState;
+		});
+	},
+
+	async clearConsolidationState(chatId: string): Promise<void> {
+		await this.queueUpdate((state) => {
+			if (state.activeConsolidations) {
+				delete state.activeConsolidations[chatId];
+			}
+		});
+	},
+
+	async getLastCronDate(chatId: string): Promise<string | null> {
+		const state = await this.load();
+		return state.lastDailyCronDates?.[chatId] || null;
+	},
+
+	async saveLastCronDate(chatId: string, dateStr: string): Promise<void> {
+		await this.queueUpdate((state) => {
+			if (!state.lastDailyCronDates) {
+				state.lastDailyCronDates = {};
+			}
+			state.lastDailyCronDates[chatId] = dateStr;
 		});
 	},
 };

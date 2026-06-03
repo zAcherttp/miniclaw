@@ -4,9 +4,12 @@ import type { MessageBus } from "@/bus/queue";
 import { getWorkspaceDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
-import { createMainAgent } from "./agents";
+import {
+	CONSOLIDATION_SYSTEM_PROMPT,
+	createConsolidationAgent,
+	createMainAgent,
+} from "./agents";
 import { compiledGraph } from "./graph";
-import { MemoryManager } from "./memory";
 import { AgentEventObserver } from "./observer";
 import { TaskScheduler } from "./scheduler";
 import { StateManager } from "./state";
@@ -47,7 +50,7 @@ Treat in-context knowledge as incomplete by default. Long-term memory is the aut
 
 export class AgentLoop {
 	public readonly config: AppConfig;
-	private bus: MessageBus;
+	public readonly bus: MessageBus;
 	public running: boolean = false;
 	private inboundTask?: Promise<void>;
 	private activeExecutions = new Map<
@@ -55,6 +58,7 @@ export class AgentLoop {
 		{ abortController: AbortController }
 	>();
 	private scheduler: TaskScheduler | null = null;
+	private lastActiveAgentType = new Map<string, "main" | "consolidation">();
 
 	constructor(config: AppConfig, bus: MessageBus) {
 		this.config = config;
@@ -183,11 +187,72 @@ export class AgentLoop {
 				let aborted = false;
 
 				try {
-					const agent = await createMainAgent(
-						this.config,
-						workspaceDir,
-						this.bus,
+					const consolidationState = await StateManager.getConsolidationState(
+						msg.chat_id,
 					);
+
+					const currentAgentType = consolidationState?.active
+						? "consolidation"
+						: "main";
+
+					let lastAgentType = this.lastActiveAgentType.get(msg.chat_id);
+					if (lastAgentType === undefined) {
+						lastAgentType = currentAgentType;
+						this.lastActiveAgentType.set(msg.chat_id, currentAgentType);
+					}
+
+					if (lastAgentType !== currentAgentType) {
+						logger.info(
+							`[AgentLoop] Agent switched from ${lastAgentType} to ${currentAgentType} for chat ${msg.chat_id}.`,
+						);
+						await this.bus.publishOutbound({
+							channel: msg.channel,
+							chat_id: msg.chat_id,
+							content: `You are now talking with ${currentAgentType} agent.`,
+							reply_to: replyTo,
+						});
+						this.lastActiveAgentType.set(msg.chat_id, currentAgentType);
+					}
+
+					// biome-ignore lint/suspicious/noExplicitAny: dynamically created agent types can vary
+					let agent: any;
+					let customSystemPrompt: string | undefined;
+
+					const isConsolidationActive = consolidationState?.active === true;
+
+					if (consolidationState?.active) {
+						logger.info(
+							`[AgentLoop] Active consolidation found for chat ${msg.chat_id}. Routing to consolidation agent.`,
+						);
+
+						if (consolidationState.checkpointMessageCount === undefined) {
+							consolidationState.checkpointMessageCount =
+								checkpointer.messages.length;
+							await StateManager.saveConsolidationState(
+								msg.chat_id,
+								consolidationState,
+							);
+							logger.info(
+								`[AgentLoop] Recorded checkpoint base length before consolidation: ${consolidationState.checkpointMessageCount}`,
+							);
+						}
+
+						agent = await createConsolidationAgent(
+							this.config,
+							workspaceDir,
+							consolidationState.proposedWorkflow,
+							msg.chat_id,
+							this.bus,
+							msg.channel,
+						);
+						customSystemPrompt = CONSOLIDATION_SYSTEM_PROMPT.replace(
+							"{{PROPOSED_WORKFLOW}}",
+							consolidationState.proposedWorkflow,
+						);
+					} else {
+						agent = await createMainAgent(this.config, workspaceDir, this.bus);
+					}
+
 					const model = agent.options.model;
 					const tools = agent.options.tools || [];
 
@@ -209,8 +274,11 @@ export class AgentLoop {
 
 					// Daily Cron: check if we should run auto-summarization/profiling
 					try {
-						const memoryManager = MemoryManager.getInstance(this.config);
-						await memoryManager.runDailyCronIfNeeded(checkpointer.messages);
+						await this.runDailyCronIfNeeded(
+							msg.chat_id,
+							msg.channel,
+							checkpointer,
+						);
 					} catch (err) {
 						logger.error(
 							err,
@@ -237,9 +305,13 @@ export class AgentLoop {
 								agentModel: model,
 								agentTools: tools,
 								chatId: msg.chat_id,
+								channel: msg.channel,
 								observer,
 								appConfig: this.config,
 								agent,
+								systemPrompt: customSystemPrompt,
+								bus: this.bus,
+								isConsolidationActive,
 							},
 							signal: controller.signal,
 							recursionLimit: this.config.agent.max_iterations,
@@ -321,6 +393,41 @@ export class AgentLoop {
 		}
 	}
 
+	private async runDailyCronIfNeeded(
+		chatId: string,
+		channel: string,
+		checkpointer: FileCheckpointSaver,
+	): Promise<void> {
+		try {
+			const todayStr = new Date().toISOString().split("T")[0];
+			const lastRunDate = await StateManager.getLastCronDate(chatId);
+
+			if (lastRunDate !== todayStr) {
+				logger.info(
+					`[AgentLoop] Running daily cron compaction pipeline for chat ${chatId}`,
+				);
+
+				if (checkpointer.messages.length > 0) {
+					await forceCompactMessages(
+						this.config,
+						checkpointer.messages,
+						chatId,
+						channel,
+						this.bus,
+					);
+				}
+
+				await StateManager.saveLastCronDate(chatId, todayStr);
+			}
+		} catch (err) {
+			logger.error(
+				err,
+				`[AgentLoop] Failed during daily cron compaction pipeline for chat ${chatId}`,
+			);
+			throw err;
+		}
+	}
+
 	private coalesceInbound(batch: InboundMessage[]): InboundMessage {
 		if (batch.length === 1) {
 			return batch[0];
@@ -360,24 +467,4 @@ export async function getSessionMessages(
 	return checkpointer.messages;
 }
 
-import { compactAndExtractWorkflows } from "./compaction";
-
-/**
- * Manually forces conversation compaction using the built-in summarization middleware.
- */
-export async function forceCompactMessages(
-	config: AppConfig,
-	messages: BaseMessage[],
-): Promise<{ compacted: BaseMessage[]; newWorkflow: string | null } | null> {
-	if (messages.length === 0) return null;
-
-	const workspaceDir = getWorkspaceDir(config.workspace_dir);
-	try {
-		const { compactedMessages, newWorkflowName } =
-			await compactAndExtractWorkflows(config, messages, workspaceDir);
-		return { compacted: compactedMessages, newWorkflow: newWorkflowName };
-	} catch (err) {
-		logger.error(err, "[AgentLoop] Failed manually compacting messages");
-		throw err;
-	}
-}
+import { forceCompactMessages } from "./compaction";

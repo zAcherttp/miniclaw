@@ -246,4 +246,119 @@ description: description of skill-${i}
 			}
 		});
 	});
+
+	describe("Search Skills Tool with Workflows", () => {
+		it("should search and match both skills and workflows folders and cap to 5", async () => {
+			const mockWorkspace = path.join(tempHome, "workspace");
+			const skillsDir = path.join(mockWorkspace, "skills");
+			const workflowsDir = path.join(mockWorkspace, "workflows");
+			await fs.mkdir(skillsDir, { recursive: true });
+			await fs.mkdir(workflowsDir, { recursive: true });
+
+			// Create 4 skills
+			for (let i = 1; i <= 4; i++) {
+				const sDir = path.join(skillsDir, `skill-${i}`);
+				await fs.mkdir(sDir, { recursive: true });
+				await fs.writeFile(
+					path.join(sDir, "SKILL.md"),
+					`---
+name: skill-${i}
+description: description of skill-${i}
+---
+# Skill ${i}
+`,
+					"utf-8",
+				);
+			}
+
+			// Create 4 workflows
+			for (let i = 1; i <= 4; i++) {
+				const wDir = path.join(workflowsDir, `workflow-${i}`);
+				await fs.mkdir(wDir, { recursive: true });
+				await fs.writeFile(
+					path.join(wDir, "SKILL.md"),
+					`---
+name: workflow-${i}
+description: description of workflow-${i}
+metadata:
+  openclaw:
+    category: workflow
+---
+# Workflow ${i}
+`,
+					"utf-8",
+				);
+			}
+
+			const mockConfig = {
+				agent: {
+					skills_dirs: ["skills"],
+				},
+			} as unknown as AppConfig;
+
+			const tool = createSearchSkillsTool(mockConfig, mockWorkspace);
+			const result = await tool.invoke({ query: "workflow" });
+			const parsed = JSON.parse(result);
+
+			expect(Array.isArray(parsed)).toBe(true);
+			// Should only contain workflows since query is "workflow"
+			expect(parsed.length).toBe(4);
+			for (const item of parsed) {
+				expect(item.name).toMatch(/workflow-\d/);
+			}
+
+			const resultAll = await tool.invoke({ query: "description" });
+			const parsedAll = JSON.parse(resultAll);
+			expect(parsedAll.length).toBe(5); // Cap to 5
+		});
+	});
+
+	describe("Workflow Prompt Injection Capping & Phrases", () => {
+		it("should cap workflows to top 10 most used and output correct phrasings", async () => {
+			const mockSkills: any[] = [];
+			// Create 15 workflows
+			for (let i = 1; i <= 15; i++) {
+				mockSkills.push({
+					name: `workflow-${i}`,
+					description: `desc ${i}`,
+					path: `workflows/workflow-${i}/SKILL.md`,
+					metadata: {
+						openclaw: {
+							category: "workflow",
+						},
+					},
+				});
+				// increment usage dynamically to make them sortable
+				for (let u = 0; u < i; u++) {
+					await StateManager.incrementSkill(`workflow-${i}`);
+				}
+			}
+
+			// Add an active standard skill to trigger standardSkills list block
+			mockSkills.push({
+				name: "gws-gmail",
+				description: "Read gmail",
+				path: "skills/gws-gmail/SKILL.md",
+				metadata: {
+					openclaw: {
+						category: "helper",
+					},
+				},
+			});
+			await StateManager.incrementSkill("gws-gmail");
+
+			const block = await SkillsManager.generatePromptBlock(mockSkills);
+			expect(block).toContain("ESTABLISHED WORKFLOWS (Top 10 most used)");
+			// Should contain top 10 (workflow-15 down to workflow-6)
+			expect(block).toContain("workflow-15");
+			expect(block).toContain("workflow-6");
+			expect(block).not.toContain("workflow-5");
+
+			// Check standard skill is also included
+			expect(block).toContain("gws-gmail");
+
+			// Check phrasings updated
+			expect(block).toContain("For other tasks not listed above, call the `search_skills` tool to search the full catalog of skills and workflows.");
+		});
+	});
 });

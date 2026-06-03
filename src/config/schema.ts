@@ -7,7 +7,7 @@ export const AgentConfigSchema = z.object({
 	max_iterations: z.number().default(30),
 	temperature: z.number().default(0.7),
 	reasoning_effort: z.string().default("medium"),
-	compaction_trigger_tokens: z.number().default(220000),
+	compaction_trigger_tokens: z.number().default(50000),
 	skills_dirs: z.array(z.string()).default(["skills"]),
 });
 
@@ -40,7 +40,7 @@ export const AppConfigSchema = z.object({
 		max_iterations: 30,
 		temperature: 0.7,
 		reasoning_effort: "medium",
-		compaction_trigger_tokens: 220000,
+		compaction_trigger_tokens: 50000,
 		skills_dirs: ["skills"],
 	}),
 	channels: ChannelsConfigSchema.default({

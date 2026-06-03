@@ -27,7 +27,7 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 			model: "ollama:gemma4:31b-cloud",
 			max_iterations: 30,
 			temperature: 0.7,
-			compaction_trigger_tokens: 220000,
+			compaction_trigger_tokens: 50000,
 			skills_dirs: ["skills"],
 		},
 		channels: {
@@ -48,6 +48,7 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 	});
 
 	beforeEach(async () => {
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		// Clean up the memory store folder before each test to start fresh
 		const storeDir = path.join(tempHome, ".miniclaw", "memory_store");
 		await fs.rm(storeDir, { recursive: true, force: true });

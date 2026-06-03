@@ -128,7 +128,7 @@ async function main() {
 		);
 	}
 
-	// 3. Load dynamic active skills
+	// 3. Load dynamic active skills & workflows
 	const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
 	let skillsPrompt = "";
 	try {
@@ -136,7 +136,13 @@ async function main() {
 			workspaceDir,
 			skillsDirs,
 		);
-		skillsPrompt = await SkillsManager.generatePromptBlock(loadedSkills);
+		const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
+			"workflows",
+		]);
+		skillsPrompt = await SkillsManager.generatePromptBlock([
+			...loadedSkills,
+			...loadedWorkflows,
+		]);
 	} catch (err) {
 		console.warn(
 			`[Warning] Failed to load dynamic agent skills: ${(err as Error).message}`,

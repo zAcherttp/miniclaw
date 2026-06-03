@@ -12,6 +12,7 @@ import { getAppDir, getConfigPath, getEnvPath } from "@/config/paths";
 
 describe("CLI Onboarding Flow", () => {
 	beforeEach(() => {
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		// Clean up temp directory before each test
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });

@@ -1,12 +1,12 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Bot } from "grammy";
+import { forceCompactMessages } from "@/agent/compaction";
 import type { AgentLoop } from "@/agent/loop";
-import { forceCompactMessages, getSessionMessages } from "@/agent/loop";
+import { getSessionMessages } from "@/agent/loop";
 import { MemoryManager } from "@/agent/memory";
 import { StateManager } from "@/agent/state";
 import { FileCheckpointSaver } from "@/agent/store";
-import { estimateMessagesTokens, formatTokens } from "@/agent/tokenizer";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getMediaDir, getWorkspaceDir } from "@/config/paths";
@@ -168,9 +168,6 @@ export class TelegramChannel extends Channel {
 					}
 					const checkpointer = new FileCheckpointSaver(chatId);
 					await checkpointer.load();
-					logger.info(
-						`[Telegram] Loaded checkpoint messages for /compact: count=${checkpointer.messages.length}, chatId=${chatId}`,
-					);
 
 					if (checkpointer.messages.length === 0) {
 						logger.info(`[Telegram] /compact skipped: no messages to compact.`);
@@ -180,29 +177,17 @@ export class TelegramChannel extends Channel {
 
 					if (this.agentLoop?.config) {
 						try {
-							const tokensBefore = estimateMessagesTokens(
-								checkpointer.messages,
-							);
-							const triggerTokens =
-								this.agentLoop.config.agent.compaction_trigger_tokens ?? 220000;
 							logger.info(
 								`[Telegram] Triggering manual conversation compaction.`,
 							);
 							const result = await forceCompactMessages(
 								this.agentLoop.config,
 								checkpointer.messages,
+								chatId,
+								"telegram",
+								this.agentLoop.bus,
 							);
-							if (result) {
-								checkpointer.messages = result.compacted;
-								await checkpointer.save();
-								const tokensAfter = estimateMessagesTokens(result.compacted);
-								logger.info(`[Telegram] Conversation compacted successfully.`);
-								let replyMsg = `conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`;
-								if (result.newWorkflow) {
-									replyMsg += `\n\nDiscovered new workflow: ${result.newWorkflow}`;
-								}
-								await ctx.reply(replyMsg);
-							} else {
+							if (!result) {
 								await ctx.reply("Failed to compact conversation.");
 							}
 						} catch (err) {
@@ -416,12 +401,13 @@ export class TelegramChannel extends Channel {
 		const turnStartTime = this.turnStartTimes.get(chat_id);
 		const elapsedMs = turnStartTime ? Date.now() - turnStartTime : 0;
 		const elapsedSec = Math.max(1, Math.round(elapsedMs / 1000));
+		const minutes = Math.floor(elapsedSec / 60);
+		const seconds = elapsedSec % 60;
 		let timeStr = "";
-		if (elapsedSec >= 60) {
-			const minutes = (elapsedSec / 60).toFixed(1);
-			timeStr = `${minutes} minutes`;
+		if (minutes > 0) {
+			timeStr = seconds > 0 ? `${minutes}m${seconds}s` : `${minutes}m`;
 		} else {
-			timeStr = `${elapsedSec} seconds`;
+			timeStr = `${seconds}s`;
 		}
 
 		const escapeHtml = (str: string) => {
@@ -596,6 +582,8 @@ export class TelegramChannel extends Channel {
 			} else {
 				throw err;
 			}
+		} finally {
+			await this.concludeToolHintMessage(msg.chat_id);
 		}
 	}
 
@@ -652,6 +640,9 @@ export class TelegramChannel extends Channel {
 					toolStream.text || "...",
 				);
 				toolStream.lastEdit = now;
+			}
+			if (streamEnd) {
+				await this.concludeToolHintMessage(chat_id);
 			}
 			return;
 		}
