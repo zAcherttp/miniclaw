@@ -3,6 +3,7 @@ import os from "node:os";
 import path from "node:path";
 import { HumanMessage } from "@langchain/core/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { MemoryManager } from "@/agent/memory";
 import { StateManager } from "@/agent/state";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
@@ -94,6 +95,13 @@ describe("CompactionManager & Skill Creator", () => {
 		expect(newWorkflowName).toBeNull();
 		expect(compactedMessages.length).toBe(2);
 		expect(compactedMessages[1].content).toBe("Compacted summary context.");
+
+		// Assert that user profile was overridden and saved successfully
+		const memoryManager = MemoryManager.getInstance(config);
+		const profile = await memoryManager.getProfile();
+		expect(profile.username).toBe("testuser");
+		expect(profile.traits).toEqual(["Prefers TypeScript"]);
+		expect(profile.activeGoals).toEqual(["Learn testing"]);
 
 		// Assert that consolidation state was toggled back to inactive (cleared)
 		const condState = await StateManager.getConsolidationState("test-chat");
