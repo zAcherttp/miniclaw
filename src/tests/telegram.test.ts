@@ -1,7 +1,24 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { AIMessage, HumanMessage } from "@langchain/core/messages";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+
+const mockForceCompactMessages = vi.fn().mockResolvedValue({
+	compactedMessages: [],
+	newWorkflow: null,
+});
+
+vi.mock("@/agent/compaction", () => ({
+	forceCompactMessages: (...args: unknown[]) =>
+		mockForceCompactMessages(...args),
+}));
+
+vi.mock("@/agent/models", () => ({
+	createChatModel: vi.fn().mockResolvedValue({
+		invoke: vi.fn().mockResolvedValue({ content: "mock" }),
+	}),
+}));
 
 // Redirect homedir to a sandbox temp folder for this test
 const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-telegram-"));
@@ -16,6 +33,7 @@ import type {
 } from "@/channels/base";
 import { TelegramChannel, toMarkdownV2 } from "@/channels/telegram";
 import { getAppDir, getMediaDir } from "@/config/paths";
+import type { AppConfig } from "@/config/schema";
 
 describe("Telegram Channel Integration & Recovery", () => {
 	let bus: MessageBus;
@@ -854,6 +872,139 @@ describe("Telegram Channel Integration & Recovery", () => {
 			);
 
 			await channel.stop();
+		});
+
+		it("should run compaction and set archiveOnConclude when /new intercepts a workflow", async () => {
+			const mockAgentLoop = {
+				cancelChat: vi.fn().mockResolvedValue(true),
+				isChatActive: vi.fn().mockReturnValue(false),
+				config: {
+					agent: { model: "gemma2" },
+				},
+				bus: bus,
+			} as unknown as AgentLoop;
+
+			const { channel, bot } = setupChannel(["*"], mockAgentLoop);
+			await channel.start();
+
+			// Pre-create active checkpoint file with messages
+			const sessionsDir = path.join(getAppDir(), "sessions", "12345");
+			fs.mkdirSync(sessionsDir, { recursive: true });
+			const checkpointFile = path.join(sessionsDir, "checkpoint.json");
+			fs.writeFileSync(
+				checkpointFile,
+				JSON.stringify({
+					storage: { x: 1 },
+					messages: [{ type: "human", content: "hello" }],
+				}),
+			);
+
+			// Mock forceCompactMessages to return a workflow and trigger consolidation state
+			mockForceCompactMessages.mockImplementationOnce(async () => {
+				await StateManager.saveConsolidationState("12345", {
+					active: true,
+					proposedWorkflow: "workflow content",
+					checkpointMessageCount: 1,
+				});
+				return { compactedMessages: [], newWorkflow: "workflow-name" };
+			});
+
+			const apiCalls: { method: string; payload: Record<string, unknown> }[] =
+				[];
+			bot.api.config.use((async (
+				_prev: unknown,
+				method: string,
+				payload: unknown,
+			) => {
+				apiCalls.push({ method, payload: payload as Record<string, unknown> });
+				return { ok: true, result: {} };
+			}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
+
+			const newUpdate = makeMessageUpdate(
+				{
+					message_id: 104,
+					text: "/new",
+				},
+				{
+					update_id: 20004,
+				},
+			);
+
+			await bot.handleUpdate(newUpdate);
+
+			// Should cancel loop and call compaction
+			expect(mockAgentLoop.cancelChat).toHaveBeenCalledWith("12345");
+			expect(mockForceCompactMessages).toHaveBeenCalled();
+
+			// Active consolidation state should have archiveOnConclude set to true
+			const condState = await StateManager.getConsolidationState("12345");
+			expect(condState).not.toBeNull();
+			expect(condState?.active).toBe(true);
+			expect(condState?.archiveOnConclude).toBe(true);
+
+			// checkpoint.json should NOT be archived/wiped yet
+			expect(fs.existsSync(checkpointFile)).toBe(true);
+
+			await channel.stop();
+		});
+
+		it("should archive checkpoint when conclude_consolidation is called with archiveOnConclude true", async () => {
+			const { FileCheckpointSaver } = await import("@/agent/store");
+			const { createConsolidationAgent } = await import("@/agent/agents");
+
+			const sessionsDir = path.join(getAppDir(), "sessions", "12345");
+			fs.mkdirSync(sessionsDir, { recursive: true });
+			const checkpointFile = path.join(sessionsDir, "checkpoint.json");
+
+			// Setup checkpoint messages
+			const checkpointer = new FileCheckpointSaver("12345");
+			checkpointer.messages = [
+				new HumanMessage("compacted message"),
+				new AIMessage("consolidation chat"),
+			];
+			await checkpointer.save();
+
+			// Setup consolidation state with archiveOnConclude = true
+			await StateManager.saveConsolidationState("12345", {
+				active: true,
+				proposedWorkflow: "workflow content",
+				checkpointMessageCount: 1,
+				archiveOnConclude: true,
+			});
+
+			const mockConfig = {
+				agent: { model: "openai:gpt-4o" },
+				workspace_dir: getAppDir(),
+			} as unknown as AppConfig;
+			const agent = await createConsolidationAgent(
+				mockConfig,
+				getAppDir(),
+				"12345",
+				bus,
+				"telegram",
+			);
+			const concludeTool = agent.options.tools?.find(
+				(t) => t.name === "conclude_consolidation",
+			);
+			expect(concludeTool).toBeDefined();
+			if (!concludeTool) throw new Error("concludeTool not defined");
+
+			const result = await concludeTool.invoke({ action: "save" });
+			expect(result).toContain("Consolidation concluded");
+
+			// Active checkpoint.json should be gone (archived)
+			expect(fs.existsSync(checkpointFile)).toBe(false);
+
+			// An archived file should exist
+			const files = fs.readdirSync(sessionsDir);
+			const archived = files.find(
+				(f) => f.startsWith("checkpoint_") && f.endsWith(".json"),
+			);
+			expect(archived).toBeDefined();
+
+			// Consolidation state should be cleared
+			const condState = await StateManager.getConsolidationState("12345");
+			expect(condState).toBeNull();
 		});
 	});
 });

@@ -115,27 +115,42 @@ export class TelegramChannel extends Channel {
 						`[Telegram] agentLoop present: ${!!this.agentLoop}, config present: ${!!this.agentLoop?.config}`,
 					);
 
-					// Consolidation: Run session auto-summarization before archiving
+					// Consolidation: Run unified compaction/consolidation pipeline on the active history before archiving
 					if (this.agentLoop?.config && checkpointer.messages.length > 0) {
 						try {
 							logger.info(
-								`[Telegram] Triggering memory consolidation with ${checkpointer.messages.length} messages.`,
+								`[Telegram] Triggering unified compaction pipeline for /new with ${checkpointer.messages.length} messages.`,
 							);
-							const { MemoryManager } = await import("@/agent/memory");
-							const memoryManager = MemoryManager.getInstance(
+							const { forceCompactMessages } = await import(
+								"@/agent/compaction"
+							);
+							const { StateManager } = await import("@/agent/state");
+
+							await forceCompactMessages(
 								this.agentLoop.config,
+								checkpointer.messages,
+								chatId,
+								"telegram",
+								this.agentLoop.bus,
 							);
-							await memoryManager.runDailySummarization(checkpointer.messages);
+
+							const condState =
+								await StateManager.getConsolidationState(chatId);
+							if (condState) {
+								// Reusable workflow proposed: flag it to archive when concluded
+								condState.archiveOnConclude = true;
+								await StateManager.saveConsolidationState(chatId, condState);
+								logger.info(
+									`[Telegram] Consolidation workflow proposed during /new. Set archiveOnConclude=true for chat ${chatId}`,
+								);
+								return;
+							}
 						} catch (err) {
 							logger.error(
 								err,
-								"[Telegram] Failed to run summarization before session archive",
+								"[Telegram] Failed to run compaction before session archive",
 							);
 						}
-					} else {
-						logger.info(
-							`[Telegram] Skipping consolidation. Condition check: agentLoop=${!!this.agentLoop}, config=${!!this.agentLoop?.config}, messagesCount=${checkpointer.messages.length}`,
-						);
 					}
 
 					await checkpointer.archive();
