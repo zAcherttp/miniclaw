@@ -12,6 +12,7 @@ import {
 } from "@langchain/langgraph";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
+import { compactAndExtractWorkflows } from "./compaction";
 import { ContextEngineeringManager } from "./history";
 import { DEFAULT_SYSTEM_PROMPT } from "./loop";
 import { MemoryManager } from "./memory";
@@ -118,7 +119,13 @@ async function agentNode(
 				workspaceDir,
 				skillsDirs,
 			);
-			skillsPrompt = await SkillsManager.generatePromptBlock(loadedSkills);
+			const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
+				"workflows",
+			]);
+			skillsPrompt = await SkillsManager.generatePromptBlock([
+				...loadedSkills,
+				...loadedWorkflows,
+			]);
 		} catch (err) {
 			logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
 		}
@@ -162,6 +169,28 @@ async function agentNode(
 							const checkpointer = new FileCheckpointSaver(chatId);
 							checkpointer.messages = messages;
 							await checkpointer.save();
+						}
+
+						// Trigger background workflow extraction asynchronously
+						if (appConfig && workspaceDir) {
+							void compactAndExtractWorkflows(
+								appConfig,
+								state.messages,
+								workspaceDir,
+							)
+								.then(({ newWorkflowName }) => {
+									if (newWorkflowName) {
+										logger.info(
+											`[AgentNode] Background compaction discovered and created new workflow: ${newWorkflowName}`,
+										);
+									}
+								})
+								.catch((err) => {
+									logger.error(
+										err,
+										"[AgentNode] Error in background workflow extraction",
+									);
+								});
 						}
 
 						// Notify the user via the message bus

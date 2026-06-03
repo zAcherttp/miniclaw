@@ -41,7 +41,7 @@ export class ExecuteSecurityError extends Error {
 	}
 }
 
-export const ALLOWED_BINARIES = new Set<string>(["gws"]);
+export const ALLOWED_BINARIES = new Set<string>(["gws", "lark-cli"]);
 
 /**
  * Validates a command string before shell execution.

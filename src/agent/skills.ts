@@ -296,7 +296,7 @@ export class SkillsManager {
 	}
 
 	/**
-	 * Generates system prompt block injecting only the top 10 most used active skills.
+	 * Generates system prompt block injecting discovered workflows and the top 10 most used standard skills.
 	 */
 	public static async generatePromptBlock(
 		skills: SkillMetadata[],
@@ -308,14 +308,21 @@ export class SkillsManager {
 			usageCount: stats[s.name] || 0,
 		}));
 
-		const activeSkills = skillsWithUsage
+		const workflows = skillsWithUsage.filter(
+			(s) => s.metadata?.openclaw?.category === "workflow",
+		);
+		const standardSkills = skillsWithUsage.filter(
+			(s) => s.metadata?.openclaw?.category !== "workflow",
+		);
+
+		const activeStandardSkills = standardSkills
 			.filter((s) => s.usageCount > 0)
 			.sort((a, b) => b.usageCount - a.usageCount)
 			.slice(0, 10);
 
-		if (activeSkills.length === 0) {
+		if (workflows.length === 0 && activeStandardSkills.length === 0) {
 			logger.info(
-				"[Skills] Prompt injection skipped: No active skills discovered (all counts are 0).",
+				"[Skills] Prompt injection skipped: No active standard skills or workflows discovered.",
 			);
 			return (
 				"## SKILLS\n" +
@@ -325,19 +332,40 @@ export class SkillsManager {
 		}
 
 		logger.info(
-			`[Skills] Prompt injected with ${activeSkills.length} top active skills catalog.`,
+			`[Skills] Prompt injected with ${workflows.length} workflows and ${activeStandardSkills.length} active standard skills.`,
 		);
 
-		let block = "## ACTIVE AGENT SKILLS (Top 10 most used)\n";
-		block +=
-			"You have access to the following frequently used skills. If you need to perform a task matching any of these, you MUST first read the detailed instructions inside its corresponding `SKILL.md` using `read_file` before proceeding.\n\n";
+		let block = "";
 
-		for (const skill of activeSkills) {
-			block += `* **${skill.name}**: ${skill.description} (Read instructions from: \`${skill.path}\` | Usage count: ${skill.usageCount})\n`;
+		if (workflows.length > 0) {
+			block += "## ESTABLISHED WORKFLOWS\n";
+			block +=
+				"You have access to the following automated workflows. If you need to execute any of these, you MUST first read the detailed instructions inside its corresponding `SKILL.md` using `read_file` before proceeding.\n\n";
+			block += "| Name | Description | Instruction Path | Usages |\n";
+			block += "| :--- | :--- | :--- | :--- |\n";
+			for (const wf of workflows) {
+				block += `| **${wf.name}** | ${wf.description} | \`${wf.path}\` | ${wf.usageCount} |\n`;
+			}
+			block += "\n";
 		}
 
-		block +=
-			"\nFor other tasks not listed above, call the `search_skills` tool to search the full skill catalog.";
-		return block;
+		if (activeStandardSkills.length > 0) {
+			block += "## ACTIVE AGENT SKILLS (Top 10 most used)\n";
+			block +=
+				"You have access to the following frequently used skills. If you need to perform a task matching any of these, you MUST first read the detailed instructions inside its corresponding `SKILL.md` using `read_file` before proceeding.\n\n";
+			block += "| Name | Description | Instruction Path | Usages |\n";
+			block += "| :--- | :--- | :--- | :--- |\n";
+			for (const skill of activeStandardSkills) {
+				block += `| **${skill.name}** | ${skill.description} | \`${skill.path}\` | ${skill.usageCount} |\n`;
+			}
+			block +=
+				"\nFor other tasks not listed above, call the `search_skills` tool to search the full skill catalog.";
+		} else {
+			block += "## ACTIVE AGENT SKILLS\n";
+			block +=
+				"To search and discover available general skills, you MUST call the `search_skills` tool first to find relevant guidelines and paths.";
+		}
+
+		return block.trim();
 	}
 }

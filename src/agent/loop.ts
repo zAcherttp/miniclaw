@@ -1,5 +1,4 @@
 import { type BaseMessage, HumanMessage } from "@langchain/core/messages";
-import { summarizationMiddleware } from "langchain";
 import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getWorkspaceDir } from "@/config/paths";
@@ -8,7 +7,6 @@ import { logger } from "@/utils/logger";
 import { createMainAgent } from "./agents";
 import { compiledGraph } from "./graph";
 import { MemoryManager } from "./memory";
-import { applyMessageUpdates, isBeforeModelMiddleware } from "./middleware";
 import { AgentEventObserver } from "./observer";
 import { TaskScheduler } from "./scheduler";
 import { StateManager } from "./state";
@@ -361,38 +359,24 @@ export async function getSessionMessages(
 	return checkpointer.messages;
 }
 
+import { compactAndExtractWorkflows } from "./compaction";
+
 /**
  * Manually forces conversation compaction using the built-in summarization middleware.
  */
 export async function forceCompactMessages(
 	config: AppConfig,
 	messages: BaseMessage[],
-): Promise<BaseMessage[] | null> {
+): Promise<{ compacted: BaseMessage[]; newWorkflow: string | null } | null> {
 	if (messages.length === 0) return null;
 
-	const summarizationModel =
-		config.agent.summarization_model || config.agent.model;
-
-	const middleware = summarizationMiddleware({
-		model: summarizationModel,
-		trigger: { tokens: 1 }, // force trigger on any conversation
-		keep: { messages: 0 },
-	});
-
-	if (middleware.beforeModel) {
-		try {
-			if (!isBeforeModelMiddleware(middleware.beforeModel)) return messages;
-			const updates = await middleware.beforeModel(
-				{ messages },
-				{ context: {} },
-			);
-			if (updates && Array.isArray(updates.messages)) {
-				return applyMessageUpdates(messages, updates.messages);
-			}
-		} catch (err) {
-			logger.error(err, "[AgentLoop] Failed manually compacting messages");
-			throw err;
-		}
+	const workspaceDir = getWorkspaceDir(config.workspace_dir);
+	try {
+		const { compactedMessages, newWorkflowName } =
+			await compactAndExtractWorkflows(config, messages, workspaceDir);
+		return { compacted: compactedMessages, newWorkflow: newWorkflowName };
+	} catch (err) {
+		logger.error(err, "[AgentLoop] Failed manually compacting messages");
+		throw err;
 	}
-	return messages;
 }

@@ -179,18 +179,20 @@ export class TelegramChannel extends Channel {
 							logger.info(
 								`[Telegram] Triggering manual conversation compaction.`,
 							);
-							const compacted = await forceCompactMessages(
+							const result = await forceCompactMessages(
 								this.agentLoop.config,
 								checkpointer.messages,
 							);
-							if (compacted) {
-								checkpointer.messages = compacted;
+							if (result) {
+								checkpointer.messages = result.compacted;
 								await checkpointer.save();
-								const tokensAfter = estimateMessagesTokens(compacted);
+								const tokensAfter = estimateMessagesTokens(result.compacted);
 								logger.info(`[Telegram] Conversation compacted successfully.`);
-								await ctx.reply(
-									`conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`,
-								);
+								let replyMsg = `conversation compacted: ${formatTokens(tokensBefore)} tokens to ${formatTokens(tokensAfter)} tokens / ${formatTokens(triggerTokens)}`;
+								if (result.newWorkflow) {
+									replyMsg += `\n\nDiscovered new workflow: ${result.newWorkflow}`;
+								}
+								await ctx.reply(replyMsg);
 							} else {
 								await ctx.reply("Failed to compact conversation.");
 							}

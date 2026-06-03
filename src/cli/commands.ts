@@ -116,10 +116,26 @@ program
 			print(chalk.green(`Environment variables created at ${envPath}`));
 		}
 
-		if (shouldWriteConfig || shouldWriteEnv) {
-			// Clone template skills during init
-			const wsDir = getWorkspaceDir(config.workspace_dir);
-			await SkillsManager.cloneTemplateSkills(wsDir);
+		let shouldWriteSkills = true;
+		const wsDir = getWorkspaceDir(config.workspace_dir);
+		const skillsDir = path.resolve(wsDir, "skills");
+
+		if (fs.existsSync(skillsDir)) {
+			const answer = await askQuestion(
+				chalk.yellow(
+					`Template skills already exist at ${skillsDir}.\nDo you want to overwrite them? (y/N): `,
+				),
+			);
+			if (answer.toLowerCase().trim() !== "y") {
+				shouldWriteSkills = false;
+				print(chalk.cyan("Skipped overwriting template skills."));
+			}
+		}
+
+		if (shouldWriteConfig || shouldWriteEnv || shouldWriteSkills) {
+			if (shouldWriteSkills) {
+				await SkillsManager.cloneTemplateSkills(wsDir);
+			}
 			print("You're all set! Try running miniclaw start to begin.");
 		} else {
 			print("No changes made.");
