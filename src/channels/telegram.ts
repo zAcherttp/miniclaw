@@ -424,25 +424,22 @@ export class TelegramChannel extends Channel {
 			timeStr = `${elapsedSec} seconds`;
 		}
 
-		const parts: string[] = [];
-		for (const [name, count] of toolStream.toolCounts.entries()) {
-			parts.push(`${name} (${count}x)`);
-		}
+		const escapeHtml = (str: string) => {
+			return str
+				.replace(/&/g, "&amp;")
+				.replace(/</g, "&lt;")
+				.replace(/>/g, "&gt;");
+		};
 
-		let collapsedText = "";
-		if (parts.length > 0) {
-			collapsedText = `⚙️ ${parts.join(", ")}`;
-		} else {
-			collapsedText = "No tools executed.";
-		}
-
-		const finalContent = `Worked for ${timeStr}\n${collapsedText}`;
+		const escapedText = escapeHtml(toolStream.text.trim());
+		const finalContent = `Worked for ${timeStr}\n<blockquote expandable>\n${escapedText}\n</blockquote>`;
 
 		try {
 			await this.send({
 				channel: this.name,
 				chat_id,
 				content: finalContent,
+				metadata: { parse_mode: "HTML" },
 			});
 		} catch (err) {
 			logger.error(
@@ -554,13 +551,16 @@ export class TelegramChannel extends Channel {
 
 	async send(msg: OutboundMessage): Promise<void> {
 		const reply = this.toReplyParameters(msg.reply_to);
-		const formattedText = toMarkdownV2(msg.content);
+		const parseMode =
+			msg.metadata?.parse_mode === "HTML" ? "HTML" : "MarkdownV2";
+		const formattedText =
+			parseMode === "HTML" ? msg.content : toMarkdownV2(msg.content);
 		try {
 			await this.bot.api.sendMessage(
 				this.parseChatId(msg.chat_id),
 				formattedText,
 				{
-					parse_mode: "MarkdownV2",
+					parse_mode: parseMode,
 					reply_parameters: reply,
 				},
 			);
@@ -575,7 +575,7 @@ export class TelegramChannel extends Channel {
 			) {
 				logger.warn(
 					err,
-					`[Telegram] Failed to send message with MarkdownV2 for chat ${msg.chat_id}. Falling back to plain text.`,
+					`[Telegram] Failed to send message with parse_mode ${parseMode} for chat ${msg.chat_id}. Falling back to plain text.`,
 				);
 				await this.bot.api.sendMessage(
 					this.parseChatId(msg.chat_id),

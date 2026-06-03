@@ -431,10 +431,11 @@ describe("Telegram Channel Integration & Recovery", () => {
 
 		// The concluded tool hint
 		const toolHintText = sendCalls[1].payload.text as string;
-		expect(toolHintText).toContain("Worked for");
-		expect(toolHintText).toContain(
-			toMarkdownV2("⚙️ search_skills (1x), read_file (1x)"),
-		);
+		expect(toolHintText).toContain("Worked for 1 seconds");
+		expect(toolHintText).toContain("<blockquote expandable>");
+		expect(toolHintText).toContain("⚙️ Calling search_skills");
+		expect(toolHintText).toContain("⚙️ Calling read_file");
+		expect(toolHintText).toContain("</blockquote>");
 
 		dateSpy.mockRestore();
 		await channel.stop();
