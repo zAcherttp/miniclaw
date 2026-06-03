@@ -29,82 +29,91 @@ Before setting up Miniclaw, ensure you have:
 
 ## Platform Setup & Installation
 
-Miniclaw relies on `gws` and `lark-cli` to perform actions in Google Workspace and Lark. Ensure they are installed and authenticated before starting the bot.
+Miniclaw relies on `gws` and `lark-cli` to perform actions in Google Workspace and Lark.
 
-### 1. Google Workspace CLI (`gws`)
-
-`gws` is a tool-agent-native CLI for Google Workspace APIs. Refer to the [gws installation documentation](https://github.com/googleworkspace/cli#installation) for more details.
-
-#### Installation Options
-
-Choose **one** of the following methods to install `gws`:
-
-- **Using NPM (Recommended — downloads pre-built binary):**
-  ```bash
-  npm install -g @googleworkspace/cli
-  ```
-- **Using Homebrew (macOS & Linux):**
-  ```bash
-  brew install googleworkspace-cli
-  ```
-- **From Source (Cargo):**
-  ```bash
-  cargo install --git https://github.com/googleworkspace/cli --locked
-  ```
-- **Using Nix Flakes:**
-  ```bash
-  nix run github:googleworkspace/cli
-  ```
-
-#### Authentication Setup
-
-Once installed, authenticate `gws` using **one** of the following workflows:
-
-- **Interactive Local Desktop (Fastest — requires `gcloud` installed & logged in):**
-  ```bash
-  gws auth setup
-  ```
-  This command creates a Google Cloud project, enables Workspace APIs, and authenticates your account.
-  
-- **Manual OAuth Setup (No `gcloud`):**
-  1. Open the [Google Cloud Console](https://console.cloud.google.com/).
-  2. Create a project and configure the OAuth consent screen as **External** (testing mode is fine).
-  3. Under **Test users**, click **Add users** and add your Google account email.
-  4. Navigate to **Credentials** -> **Create credentials** -> **OAuth client ID** -> select **Desktop app**.
-  5. Download the client secret JSON file and save it to `~/.config/gws/client_secret.json`.
-  6. Perform login:
-     ```bash
-     gws auth login
-     ```
+- **Google Workspace CLI (`gws`)**: A tool-agent-native CLI for Google Workspace APIs. Follow the [gws installation and authentication setup guide](https://github.com/googleworkspace/cli#installation).
+- **Lark Suite CLI (`lark-cli`)**: The official CLI for Lark/Feishu. Follow the [lark-cli quick start and login guide](https://github.com/larksuite/cli#installation--quick-start).
 
 ---
 
-### 2. Lark Suite CLI (`lark-cli`)
+## Codebase Directory Structure
 
-`lark-cli` is the official command-line tool for Lark/Feishu. Refer to the [lark-cli quick start documentation](https://github.com/larksuite/cli#installation--quick-start) for more details.
+Here is a tree overview of Miniclaw's codebase directory structure along with the functions of the respective files:
 
-#### Installation Options
-
-Choose **one** of the following methods to install `lark-cli`:
-
-- **Using NPM (Recommended):**
-  ```bash
-  npx @larksuite/cli@latest install
-  ```
-- **From Source (requires Go 1.23+ and Python 3):**
-  ```bash
-  git clone https://github.com/larksuite/cli.git
-  cd cli
-  make install
-  ```
-
-#### Authentication Setup
-
-Authenticate your client by running:
-```bash
-lark auth login
+```text
+miniclaw/
+├── config.json                     # Main user settings configuration (auto-created at `~\.miniclaw\config.json` on init)
+├── .env.example                    # Template environment file
+├── index.ts                        # Main entry point (starts the application CLI)
+├── tsconfig.json                   # TypeScript project configuration
+├── vitest.config.ts                # Vitest unit test configuration
+└── src/                            # Application source files
+    ├── index.ts                    # Alternative main/sub module entry
+    ├── bus/                        # Out-of-band communication pipeline
+    │   ├── message.ts              # Inbound/Outbound message schemas and types
+    │   └── queue.ts                # Asynchronous queue-based MessageBus implementation
+    ├── channels/                   # External chat interface connectors
+    │   ├── base.ts                 # Base Channel abstract class (handling allow-lists & permissions)
+    │   ├── manager.ts              # ChannelManager dispatching inbound/outbound streams across platforms
+    │   └── telegram.ts             # TelegramChannel adapter (via Grammy) with formatting & menu commands
+    ├── cli/                        # Command-line interface commands definitions
+    │   └── commands.ts             # Commander.js setup for init, start, onboarding, and configuration
+    ├── config/                     # Configuration schema and loading utilities
+    │   ├── loader.ts               # Safely loads/saves JSON configs & loads dotenv
+    │   ├── paths.ts                # Single source of truth for resolution of app directories (e.g. `~\.miniclaw`)
+    │   └── schema.ts               # Zod schemas validating configuration settings
+    ├── scripts/                    # Developer helper scripts
+    │   └── print-system-prompt.ts  # Compiles and outputs prompt/tools statistics without making API calls
+    ├── template/                   # Default configuration templates cloned on initialization
+    │   ├── AGENTS.md               # Default guidelines template copied to workspace
+    │   ├── env.template            # Default env variables template copied as .env
+    │   └── skills/                 # Default SKILL.md templates copied to workspace on onboarding
+    ├── utils/                      # Core cross-functional utility functions
+    │   ├── date.ts                 # ISO date stamp provider for daily cron logic
+    │   ├── logger.ts               # Pino-pretty logger configuration
+    │   └── retry.ts                # Exponential backoff delay calculator for queue retries
+    └── agent/                      # Core LLM execution loop & LangGraph engine
+        ├── agents.ts               # Compiles main agent and consolidation agent with tools
+        ├── compaction.ts           # Summarization, profiling and workflow extraction manager
+        ├── graph.ts                # Compiles the LangGraph execution graph (agent/tools nodes & conditional routing)
+        ├── history.ts              # ContextEngineeringManager compiling guidelines (AGENTS.md, preferences.md)
+        ├── loop.ts                 # AgentLoop processing message queue batches and checking daily crons
+        ├── memory.ts               # Offline memory store (FactMemory retrieval and UserProfile state storage)
+        ├── middleware.ts           # Summarization/remove-message middleware helpers
+        ├── models.ts               # Universal chat model loader with custom provider configurations
+        ├── observer.ts             # AgentEventObserver streaming real-time deltas and formatting tool execution hints
+        ├── security.ts             # resolveSecurePath boundary checks & execute whitelisted command checks
+        ├── store.ts                # FileCheckpointSaver serialization for thread checkpoints
+        ├── tokenizer.ts            # Content-aware BPE token estimator for active compaction triggers
+        └── tools/                  # Executable tools bound to the Agent
+            ├── execute.ts          # Whitelisted local shell command runner (gws, lark-cli)
+            ├── filesystem.ts       # Secure file actions (reading, writing, editing files)
+            ├── memory.ts           # Remember/recall long-term facts & preferences
+            ├── reminders.ts        # Manage background task scheduling (create, update, delete reminders)
+            ├── skills.ts           # Discover/search dynamic skills & workflows catalog
+            └── todos.ts            # Read/write todo checklists
 ```
-Follow the interactive prompt in your terminal and browser to select your Lark organization/tenant and authorize scope requests.
+
+---
+
+## Application Data Directory Structure (`~/.miniclaw`)
+
+Miniclaw initializes its persistent state, configuration, and session cache inside the user's home directory. Below is the file tree and description for `~/.miniclaw`:
+
+```text
+~/.miniclaw/
+├── config.json                     # Generated settings (holds active model configurations and skills directory paths)
+├── .env                            # Environment variables (API tokens, Telegram keys, model endpoints)
+├── state.json                      # Persistent application state (skill usage statistics, cron markers, active requests)
+├── workspace/                      # Safe local sandbox directory where agent operations/file tasks occur
+│   ├── AGENTS.md                   # (Optional) Workspace alignment rules appended to system prompt
+│   └── workflows/                  # Saved workflow skill confirmation directories
+└── sessions/                       # Conversation checkpointer database directory
+    └── <chat_id>/                  # Chat session subdirectory matching specific Telegram thread/user ID
+        └── checkpoint.json         # Active serialized message thread history checkpoint
+```
+
+
 
 ---
 
@@ -159,7 +168,7 @@ Follow the interactive prompt in your terminal and browser to select your Lark o
 
 When chatting with Miniclaw over Telegram, the following commands are available in the menu:
 
-- `/clear` — Cancels any active model execution and wipes the current chat history completely (archived history remains preserved).
+- `/clear` — Cancels any active model execution and wipes the current chat history completely.
 - `/compact` — Manually compacts the active conversation history, running memory profiling and workflow skill extraction.
 - `/stop` — Gracefully interrupts and stops the active model execution loop.
 - `/status` — Displays current status of the model, active session properties, and workspace config.

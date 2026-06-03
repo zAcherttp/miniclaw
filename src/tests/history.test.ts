@@ -108,7 +108,7 @@ describe("Thread History & Context Engineering Manager", () => {
 			expect(res).toBe("");
 		});
 
-		it("should load workspace AGENTS.md and user preferences.md instructions", async () => {
+		it("should load workspace AGENTS.md instructions", async () => {
 			// Write mock AGENTS.md in workspace
 			await fs.writeFile(
 				path.join(workspaceDir, "AGENTS.md"),
@@ -116,20 +116,9 @@ describe("Thread History & Context Engineering Manager", () => {
 				"utf-8",
 			);
 
-			// Write mock preferences.md in home's .miniclaw folder
-			const appDir = path.join(tempHome, ".miniclaw");
-			await fs.mkdir(appDir, { recursive: true });
-			await fs.writeFile(
-				path.join(appDir, "preferences.md"),
-				"Prefer sleek modes",
-				"utf-8",
-			);
-
 			const res = await ContextEngineeringManager.loadMemoryFiles(workspaceDir);
 			expect(res).toContain("### WORKSPACE MEMORY (AGENTS.md):");
 			expect(res).toContain("Convention A");
-			expect(res).toContain("### USER PREFERENCES (preferences.md):");
-			expect(res).toContain("Prefer sleek modes");
 		});
 	});
 });

@@ -13,12 +13,22 @@ import { ChannelManager } from "@/channels/manager";
 import { loadConfig, saveConfig } from "@/config/loader";
 import { getConfigPath, getEnvPath, getWorkspaceDir } from "@/config/paths";
 import { AppConfigSchema } from "@/config/schema";
-import { DEFAULT_ENV_TEMPLATE } from "@/template/env";
 
 const isTestEnv =
 	process.env.NODE_ENV === "test" ||
 	process.env.VITEST === "true" ||
 	process.env.VITEST === "1";
+
+function getTemplateFilePath(filename: string): string {
+	let templatePath = path.resolve(__dirname, "../src/template", filename);
+	if (!fs.existsSync(templatePath)) {
+		templatePath = path.resolve(__dirname, "../../src/template", filename);
+	}
+	if (!fs.existsSync(templatePath)) {
+		templatePath = path.resolve(process.cwd(), "src/template", filename);
+	}
+	return templatePath;
+}
 
 function print(...args: unknown[]) {
 	if (isTestEnv) return;
@@ -48,11 +58,18 @@ export function runOnboarding() {
 
 	const envPath = getEnvPath();
 	if (!fs.existsSync(envPath)) {
-		fs.writeFileSync(envPath, DEFAULT_ENV_TEMPLATE, "utf-8");
+		const templateEnv = getTemplateFilePath("env.template");
+		if (fs.existsSync(templateEnv)) {
+			fs.copyFileSync(templateEnv, envPath);
+			print(
+				chalk.green(
+					`Environment variables created at ${envPath} from template`,
+				),
+			);
+		}
 	}
 
 	print(chalk.green(`Configuration saved to ${getConfigPath()}`));
-	print(chalk.green(`Environment variables created at ${envPath}`));
 
 	// Clone template skills during onboarding setup
 	const wsDir = getWorkspaceDir(config.workspace_dir);
@@ -68,6 +85,15 @@ export function runOnboarding() {
 	}
 
 	void SkillsManager.cloneTemplateSkills(wsDir);
+
+	const agentsPath = path.join(wsDir, "AGENTS.md");
+	if (!fs.existsSync(agentsPath)) {
+		const templateAgents = getTemplateFilePath("AGENTS.md");
+		if (fs.existsSync(templateAgents)) {
+			fs.copyFileSync(templateAgents, agentsPath);
+			print(chalk.green(`Created AGENTS.md at ${agentsPath} from template`));
+		}
+	}
 
 	print("You're all set! Try running miniclaw start to begin.");
 	return config;
@@ -146,8 +172,15 @@ program
 			if (!fs.existsSync(dir)) {
 				fs.mkdirSync(dir, { recursive: true });
 			}
-			fs.writeFileSync(envPath, DEFAULT_ENV_TEMPLATE, "utf-8");
-			print(chalk.green(`Environment variables created at ${envPath}`));
+			const templateEnv = getTemplateFilePath("env.template");
+			if (fs.existsSync(templateEnv)) {
+				fs.copyFileSync(templateEnv, envPath);
+				print(
+					chalk.green(
+						`Environment variables created at ${envPath} from template`,
+					),
+				);
+			}
 		}
 
 		let shouldWriteSkills = true;
@@ -163,6 +196,17 @@ program
 			if (answer.toLowerCase().trim() !== "y") {
 				shouldWriteSkills = false;
 				print(chalk.cyan("Skipped overwriting template skills."));
+			}
+		}
+
+		let agentsCreated = false;
+		const agentsPath = path.join(wsDir, "AGENTS.md");
+		if (!fs.existsSync(agentsPath)) {
+			const templateAgents = getTemplateFilePath("AGENTS.md");
+			if (fs.existsSync(templateAgents)) {
+				fs.copyFileSync(templateAgents, agentsPath);
+				agentsCreated = true;
+				print(chalk.green(`Created AGENTS.md at ${agentsPath} from template`));
 			}
 		}
 
@@ -183,7 +227,11 @@ program
 
 			print("You're all set! Try running miniclaw start to begin.");
 		} else {
-			print("No changes made.");
+			if (agentsCreated) {
+				print("Onboarding setup updated successfully.");
+			} else {
+				print("No changes made.");
+			}
 		}
 	});
 

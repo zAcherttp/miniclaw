@@ -65,6 +65,7 @@ describe("CLI Onboarding Flow", () => {
 		const wsDir = getWorkspaceDir(config.workspace_dir);
 		expect(fs.existsSync(path.join(wsDir, "skills"))).toBe(true);
 		expect(fs.existsSync(path.join(wsDir, "workflows"))).toBe(true);
+		expect(fs.existsSync(path.join(wsDir, "AGENTS.md"))).toBe(true);
 
 		// Check env file content
 		const envContent = fs.readFileSync(envPath, "utf-8");
@@ -109,6 +110,7 @@ describe("CLI Onboarding Flow", () => {
 			expect(fs.existsSync(path.join(wsDir, "workflows"))).toBe(true);
 			expect(fs.existsSync(path.join(wsDir, "custom-rel-dir"))).toBe(true);
 			expect(fs.existsSync(path.join(tempHome, "custom-abs-dir"))).toBe(true);
+			expect(fs.existsSync(path.join(wsDir, "AGENTS.md"))).toBe(true);
 		} finally {
 			parseSpy.mockRestore();
 		}

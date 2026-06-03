@@ -192,7 +192,7 @@ export class TelegramChannel extends Channel {
 					logger.info(
 						`[Telegram] ${command} command received for chat ${chatId}`,
 					);
-					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/clear - Wipe active session history (archives preserved)\n/compact - Compact conversation history (summarizes old messages)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
+					const helpText = `✨ *Miniclaw Bot Commands Menu*\n\n/clear - Wipe active session history\n/compact - Compact conversation history (summarizes old messages)\n/stop - Stop active running agent execution\n/status - View status of active model and session\n/help - Show this help menu`;
 					await ctx.reply(helpText);
 					return;
 				}
@@ -430,7 +430,7 @@ export class TelegramChannel extends Channel {
 			const commands = [
 				{
 					command: "clear",
-					description: "Wipe active session history (archives preserved)",
+					description: "Wipe active session history",
 				},
 				{
 					command: "compact",
