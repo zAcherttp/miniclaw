@@ -303,12 +303,14 @@ export class SkillsManager {
 	): Promise<string> {
 		const stats = await SkillsManager.getUsageStats();
 
-		const skillsWithUsage = skills.map((s) => ({
+		type ScoredSkill = SkillMetadata & { usageCount: number };
+
+		const skillsWithUsage: ScoredSkill[] = skills.map((s) => ({
 			...s,
 			usageCount: stats[s.name] || 0,
 		}));
 
-		const workflows = skillsWithUsage
+		const workflows: ScoredSkill[] = skillsWithUsage
 			.filter((s) => s.metadata?.openclaw?.category === "workflow")
 			.sort((a, b) => b.usageCount - a.usageCount)
 			.slice(0, 10);

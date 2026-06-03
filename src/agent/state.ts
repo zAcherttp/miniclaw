@@ -12,13 +12,19 @@ export interface ConsolidationState {
 	checkpointMessageCount?: number;
 }
 
+/**
+ * A serialized entry from the Telegram stream buffer map.
+ * Tuple of [streamKey, serialized buffer payload].
+ */
+export type SerializedStreamEntry = [string, unknown];
+
 export interface AppState {
 	lastActiveChat: ActiveChatSession | null;
 	skillsStats: Record<string, number>;
-	telegramStreams: Array<[string, unknown]>; // Serialized StreamBuffer map using unknown
+	telegramStreams: SerializedStreamEntry[];
 	activeRequests: Record<string, InboundMessage>;
-	activeConsolidations?: Record<string, ConsolidationState>;
-	lastDailyCronDates?: Record<string, string>;
+	activeConsolidations: Record<string, ConsolidationState>;
+	lastDailyCronDates: Record<string, string>;
 }
 
 export const DEFAULT_APP_STATE: AppState = {
@@ -144,12 +150,12 @@ export const StateManager = {
 	/**
 	 * Specialized Sub-APIs: Telegram active Streams
 	 */
-	async getTelegramStreams(): Promise<Array<[string, unknown]>> {
+	async getTelegramStreams(): Promise<SerializedStreamEntry[]> {
 		const state = await this.load();
 		return state.telegramStreams;
 	},
 
-	async saveTelegramStreams(streams: Array<[string, unknown]>): Promise<void> {
+	async saveTelegramStreams(streams: SerializedStreamEntry[]): Promise<void> {
 		await this.queueUpdate((state) => {
 			state.telegramStreams = streams;
 		});
@@ -160,23 +166,18 @@ export const StateManager = {
 	 */
 	async getActiveRequests(): Promise<Record<string, InboundMessage>> {
 		const state = await this.load();
-		return state.activeRequests || {};
+		return state.activeRequests;
 	},
 
 	async saveActiveRequest(chatId: string, msg: InboundMessage): Promise<void> {
 		await this.queueUpdate((state) => {
-			if (!state.activeRequests) {
-				state.activeRequests = {};
-			}
 			state.activeRequests[chatId] = msg;
 		});
 	},
 
 	async clearActiveRequest(chatId: string): Promise<void> {
 		await this.queueUpdate((state) => {
-			if (state.activeRequests) {
-				delete state.activeRequests[chatId];
-			}
+			delete state.activeRequests[chatId];
 		});
 	},
 
@@ -192,18 +193,13 @@ export const StateManager = {
 		condState: ConsolidationState,
 	): Promise<void> {
 		await this.queueUpdate((state) => {
-			if (!state.activeConsolidations) {
-				state.activeConsolidations = {};
-			}
 			state.activeConsolidations[chatId] = condState;
 		});
 	},
 
 	async clearConsolidationState(chatId: string): Promise<void> {
 		await this.queueUpdate((state) => {
-			if (state.activeConsolidations) {
-				delete state.activeConsolidations[chatId];
-			}
+			delete state.activeConsolidations[chatId];
 		});
 	},
 
@@ -214,9 +210,6 @@ export const StateManager = {
 
 	async saveLastCronDate(chatId: string, dateStr: string): Promise<void> {
 		await this.queueUpdate((state) => {
-			if (!state.lastDailyCronDates) {
-				state.lastDailyCronDates = {};
-			}
 			state.lastDailyCronDates[chatId] = dateStr;
 		});
 	},

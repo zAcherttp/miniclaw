@@ -25,7 +25,10 @@ vi.mock("@/agent/models", () => ({
 	}),
 }));
 
-import { compactAndExtractWorkflows, forceCompactMessages } from "@/agent/compaction";
+import {
+	compactAndExtractWorkflows,
+	forceCompactMessages,
+} from "@/agent/compaction";
 
 describe("CompactionManager & Skill Creator", () => {
 	let tempDir: string;
@@ -165,7 +168,7 @@ Use lark-cli to query Lark calendar.`;
 				channel: "telegram",
 				chat_id: "test-chat",
 				content: expect.stringContaining(
-					'compacting conversation and extracting workflows',
+					"compacting conversation and extracting workflows",
 				),
 			}),
 		);
@@ -173,9 +176,7 @@ Use lark-cli to query Lark calendar.`;
 			expect.objectContaining({
 				channel: "telegram",
 				chat_id: "test-chat",
-				content: expect.stringContaining(
-					'conversation compacted:',
-				),
+				content: expect.stringContaining("conversation compacted:"),
 			}),
 		);
 		expect(mockBus.publishOutbound).toHaveBeenCalledWith(

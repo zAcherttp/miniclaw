@@ -7,6 +7,7 @@ import { OpenAIEmbeddings } from "@langchain/openai";
 import { LocalFileStore } from "langchain/storage/file_system";
 import { getAppDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
+import { todayISODate } from "@/utils/date";
 import { logger } from "@/utils/logger";
 import { createChatModel } from "./models";
 
@@ -27,6 +28,15 @@ export interface EmbeddingsLike {
 	embedQuery(text: string): Promise<number[]>;
 	model?: string;
 	modelName?: string;
+}
+
+/**
+ * A single result entry from a semantic or keyword fact search.
+ */
+export interface FactSearchResult {
+	key: string;
+	content: string;
+	similarity: number;
 }
 
 /**
@@ -218,7 +228,7 @@ export class MemoryManager {
 	public async searchFacts(
 		query: string,
 		limit = 5,
-	): Promise<Array<{ key: string; content: string; similarity: number }>> {
+	): Promise<FactSearchResult[]> {
 		if (!this.store) await this.init();
 		if (!this.store) return [];
 		const store = this.store;
@@ -233,11 +243,7 @@ export class MemoryManager {
 				return await this.searchFactsKeywordFallback(query, limit);
 			}
 
-			const matched: Array<{
-				key: string;
-				content: string;
-				similarity: number;
-			}> = [];
+			const matched: FactSearchResult[] = [];
 
 			for await (const key of store.yieldKeys("fact_")) {
 				const fact = await this.get<FactMemory>(key);
@@ -292,12 +298,11 @@ export class MemoryManager {
 	private async searchFactsKeywordFallback(
 		query: string,
 		limit: number,
-	): Promise<Array<{ key: string; content: string; similarity: number }>> {
+	): Promise<FactSearchResult[]> {
 		if (!this.store) await this.init();
 		if (!this.store) return [];
 		const store = this.store;
-		const matched: Array<{ key: string; content: string; similarity: number }> =
-			[];
+		const matched: FactSearchResult[] = [];
 		for await (const key of store.yieldKeys("fact_")) {
 			const fact = await this.get<FactMemory>(key);
 			if (fact?.content) {
@@ -364,8 +369,7 @@ export class MemoryManager {
 	 */
 	public async updateProfileAndTimestamp(profile: UserProfile): Promise<void> {
 		await this.saveProfile(profile);
-		const todayStr = new Date().toISOString().split("T")[0];
-		await this.set("meta_last_summarization_date", todayStr);
+		await this.set("meta_last_summarization_date", todayISODate());
 	}
 
 	/**
@@ -433,11 +437,7 @@ Do NOT wrap the JSON in markdown blocks or include any other conversational prea
 				Array.isArray(updatedProfile.traits) &&
 				Array.isArray(updatedProfile.activeGoals)
 			) {
-				await this.saveProfile(updatedProfile);
-
-				// Set meta stamp
-				const todayStr = new Date().toISOString().split("T")[0];
-				await this.set("meta_last_summarization_date", todayStr);
+				await this.updateProfileAndTimestamp(updatedProfile);
 
 				logger.info(
 					`[MemoryManager] Daily auto-summarization completed successfully. Profile updated: ${JSON.stringify(

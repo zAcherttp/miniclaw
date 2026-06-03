@@ -83,7 +83,6 @@ Rules:
 export async function createConsolidationAgent(
 	config: AppConfig,
 	workspaceDir: string,
-	_proposedWorkflow: string,
 	chatId: string,
 	bus: MessageBus,
 	channel: string,

@@ -1,10 +1,7 @@
 import fs from "node:fs";
 import path from "node:path";
 import { Bot } from "grammy";
-import { forceCompactMessages } from "@/agent/compaction";
 import type { AgentLoop } from "@/agent/loop";
-import { getSessionMessages } from "@/agent/loop";
-import { MemoryManager } from "@/agent/memory";
 import { StateManager } from "@/agent/state";
 import { FileCheckpointSaver } from "@/agent/store";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
@@ -124,6 +121,7 @@ export class TelegramChannel extends Channel {
 							logger.info(
 								`[Telegram] Triggering memory consolidation with ${checkpointer.messages.length} messages.`,
 							);
+							const { MemoryManager } = await import("@/agent/memory");
 							const memoryManager = MemoryManager.getInstance(
 								this.agentLoop.config,
 							);
@@ -180,6 +178,9 @@ export class TelegramChannel extends Channel {
 							logger.info(
 								`[Telegram] Triggering manual conversation compaction.`,
 							);
+							const { forceCompactMessages } = await import(
+								"@/agent/compaction"
+							);
 							const result = await forceCompactMessages(
 								this.agentLoop.config,
 								checkpointer.messages,
@@ -207,6 +208,7 @@ export class TelegramChannel extends Channel {
 
 				if (command === "/status") {
 					logger.info(`[Telegram] /status command received for chat ${chatId}`);
+					const { getSessionMessages } = await import("@/agent/loop");
 					const messages = await getSessionMessages(chatId); // load all active messages from checkpoint
 					const isActive = this.agentLoop
 						? this.agentLoop.isChatActive(chatId)
@@ -429,6 +431,10 @@ export class TelegramChannel extends Channel {
 				? `Worked for ${timeStr}\n<blockquote expandable>\n${escapedText}\n</blockquote>`
 				: `Worked for ${timeStr}\n${escapedText}`;
 
+		// Delete from state immediately to prevent infinite recursion via send()
+		this.toolStreams.delete(chat_id);
+		this.turnStartTimes.delete(chat_id);
+
 		try {
 			await this.send({
 				channel: this.name,
@@ -441,9 +447,6 @@ export class TelegramChannel extends Channel {
 				err,
 				`[Telegram] Failed to conclude tool hint message for chat ${chat_id}`,
 			);
-		} finally {
-			this.toolStreams.delete(chat_id);
-			this.turnStartTimes.delete(chat_id);
 		}
 	}
 
@@ -640,9 +643,6 @@ export class TelegramChannel extends Channel {
 					toolStream.text || "...",
 				);
 				toolStream.lastEdit = now;
-			}
-			if (streamEnd) {
-				await this.concludeToolHintMessage(chat_id);
 			}
 			return;
 		}

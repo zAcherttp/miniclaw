@@ -50,8 +50,8 @@ export async function compactAndExtractWorkflows(
 	messages: BaseMessage[],
 	workspaceDir: string,
 	chatId: string,
-	channel: string,
-	bus: MessageBus,
+	_channel: string,
+	_bus: MessageBus,
 ): Promise<{
 	compactedMessages: BaseMessage[];
 	newWorkflowName: string | null;

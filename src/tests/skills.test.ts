@@ -11,7 +11,11 @@ if (!existsSync(tempHome)) {
 }
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
-import { SkillFrontmatterSchema, SkillsManager } from "@/agent/skills";
+import {
+	SkillFrontmatterSchema,
+	type SkillMetadata,
+	SkillsManager,
+} from "@/agent/skills";
 import { StateManager } from "@/agent/state";
 import { createSearchSkillsTool } from "@/agent/tools/skills";
 import type { AppConfig } from "@/config/schema";
@@ -315,7 +319,7 @@ metadata:
 
 	describe("Workflow Prompt Injection Capping & Phrases", () => {
 		it("should cap workflows to top 10 most used and output correct phrasings", async () => {
-			const mockSkills: any[] = [];
+			const mockSkills: SkillMetadata[] = [];
 			// Create 15 workflows
 			for (let i = 1; i <= 15; i++) {
 				mockSkills.push({
@@ -358,7 +362,9 @@ metadata:
 			expect(block).toContain("gws-gmail");
 
 			// Check phrasings updated
-			expect(block).toContain("For other tasks not listed above, call the `search_skills` tool to search the full catalog of skills and workflows.");
+			expect(block).toContain(
+				"For other tasks not listed above, call the `search_skills` tool to search the full catalog of skills and workflows.",
+			);
 		});
 	});
 });

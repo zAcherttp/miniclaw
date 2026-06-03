@@ -45,7 +45,9 @@ export const createSearchSkillsTool = (
 				});
 
 				if (matches.length === 0) {
-					logger.info(`[Skills] No skills or workflows matched query "${query}"`);
+					logger.info(
+						`[Skills] No skills or workflows matched query "${query}"`,
+					);
 					return `No skills or workflows matched your query "${query}". Try different keywords.`;
 				}
 

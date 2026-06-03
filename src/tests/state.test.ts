@@ -2,7 +2,7 @@ import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { StateManager } from "@/agent/state";
+import { type SerializedStreamEntry, StateManager } from "@/agent/state";
 
 describe("Centralized App StateManager Daemon", () => {
 	let tempHome: string;
@@ -55,7 +55,7 @@ describe("Centralized App StateManager Daemon", () => {
 	});
 
 	it("should save and restore telegram active streaming buffers", async () => {
-		const mockStreams: Array<[string, unknown]> = [
+		const mockStreams: SerializedStreamEntry[] = [
 			["chat-1", { text: "hello", chat_id: "chat-1" }],
 		];
 

@@ -3,12 +3,15 @@ import type { InboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
 import { getWorkspaceDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
+import { todayISODate } from "@/utils/date";
 import { logger } from "@/utils/logger";
+import { calcRetryDelay } from "@/utils/retry";
 import {
 	CONSOLIDATION_SYSTEM_PROMPT,
 	createConsolidationAgent,
 	createMainAgent,
 } from "./agents";
+import { forceCompactMessages } from "./compaction";
 import { compiledGraph } from "./graph";
 import { AgentEventObserver } from "./observer";
 import { TaskScheduler } from "./scheduler";
@@ -240,7 +243,6 @@ export class AgentLoop {
 						agent = await createConsolidationAgent(
 							this.config,
 							workspaceDir,
-							consolidationState.proposedWorkflow,
 							msg.chat_id,
 							this.bus,
 							msg.channel,
@@ -357,7 +359,7 @@ export class AgentLoop {
 					} else {
 						// Error occurred, retry with exponential backoff on queue
 						const retryCount = ((msg.metadata?._retryCount as number) || 0) + 1;
-						const delay = Math.min(1000 * 2 ** (retryCount - 1), 10000);
+						const delay = calcRetryDelay(retryCount);
 						logger.error(
 							e,
 							`[AgentLoop] Error processing inbound message for chat ${msg.chat_id}. Retrying (attempt ${retryCount}) in ${delay}ms...`,
@@ -399,7 +401,7 @@ export class AgentLoop {
 		checkpointer: FileCheckpointSaver,
 	): Promise<void> {
 		try {
-			const todayStr = new Date().toISOString().split("T")[0];
+			const todayStr = todayISODate();
 			const lastRunDate = await StateManager.getLastCronDate(chatId);
 
 			if (lastRunDate !== todayStr) {
@@ -466,5 +468,3 @@ export async function getSessionMessages(
 	await checkpointer.load();
 	return checkpointer.messages;
 }
-
-import { forceCompactMessages } from "./compaction";

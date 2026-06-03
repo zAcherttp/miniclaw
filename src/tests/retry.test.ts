@@ -18,7 +18,7 @@ vi.mock("@/agent/agents", () => ({
 	createConsolidationAgent: vi
 		.fn()
 		.mockImplementation(
-			async (_config, _workspaceDir, _workflow, chatId, bus, channel) => {
+			async (_config, _workspaceDir, chatId, bus, channel) => {
 				const { DynamicStructuredTool } = await import("@langchain/core/tools");
 				const { z } = await import("zod");
 				const { StateManager } = await import("@/agent/state");
@@ -345,7 +345,6 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		expect(createConsolidationAgent).toHaveBeenCalledWith(
 			config,
 			expect.any(String),
-			"mock-workflow-content",
 			"chat123",
 			bus,
 			"telegram",
@@ -468,7 +467,6 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		const agentInstance = await createConsolidationAgent(
 			config,
 			config.workspace_dir,
-			"mock-workflow-content",
 			"chatWipe",
 			bus,
 			"telegram",
