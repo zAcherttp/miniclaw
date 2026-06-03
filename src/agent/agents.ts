@@ -2,6 +2,7 @@ import { createAgent, summarizationMiddleware } from "langchain";
 import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
 import { createChatModel } from "./models";
+import { createManageCalendarTool } from "./tools/calendar";
 import { createExecuteTool } from "./tools/execute";
 import { createFilesystemTools } from "./tools/filesystem";
 import { createRecallTool, createRememberTool } from "./tools/memory";
@@ -30,6 +31,7 @@ export async function createMainAgent(
 	const recallTool = createRecallTool(config);
 	const searchSkillsTool = createSearchSkillsTool(config, workspaceDir);
 	const manageRemindersTool = createManageRemindersTool(workspaceDir, bus);
+	const manageCalendarTool = createManageCalendarTool(workspaceDir);
 
 	// Base tools list
 	const baseTools = [
@@ -40,6 +42,7 @@ export async function createMainAgent(
 		recallTool,
 		searchSkillsTool,
 		manageRemindersTool,
+		manageCalendarTool,
 	];
 
 	const summarizationModel =

@@ -1,27 +1,19 @@
 ---
 name: recipe-reschedule-meeting
-description: "Move a Google Calendar event to a new time and automatically notify all attendees."
+description: "Move a calendar event to a new time and notify attendees."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "scheduling"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-calendar
 ---
 
-# Reschedule a Google Calendar Meeting
+# Reschedule a Calendar Meeting
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-calendar`
-
-Move a Google Calendar event to a new time and automatically notify all attendees.
+Move a calendar event to a new time and update its details seamlessly.
 
 ## Steps
 
-1. Find the event: `gws calendar +agenda`
-2. Get event details: `gws calendar events get --params '{"calendarId": "primary", "eventId": "EVENT_ID"}'`
-3. Update the time: `gws calendar events patch --params '{"calendarId": "primary", "eventId": "EVENT_ID", "sendUpdates": "all"}' --json '{"start": {"dateTime": "2025-01-22T14:00:00", "timeZone": "America/New_York"}, "end": {"dateTime": "2025-01-22T15:00:00", "timeZone": "America/New_York"}}'`
-
+1. **Find the Event**: Call the `manage_calendar` tool with `action: "list"` to search for the event and retrieve its details.
+2. **Update the Time**: Call `manage_calendar` with `action: "update"`, passing the corresponding `eventId`, and providing the new `start` and `end` times.
+3. **Confirm the Change**: Run `manage_calendar` with `action: "list"` to confirm the event has been successfully moved to its new slot.

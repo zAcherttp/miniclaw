@@ -1,28 +1,19 @@
 ---
 name: recipe-share-event-materials
-description: "Share Google Drive files with all attendees of a Google Calendar event."
+description: "Coordinate event information and share materials with all attendees of a calendar event."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "productivity"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-calendar
-        - gws-drive
 ---
 
-# Share Files with Meeting Attendees
+# Coordinate Materials with Meeting Attendees
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-calendar`, `gws-drive`
-
-Share Google Drive files with all attendees of a Google Calendar event.
+Prepare event information and share description/materials with all attendees of a calendar event.
 
 ## Steps
 
-1. Get event attendees: `gws calendar events get --params '{"calendarId": "primary", "eventId": "EVENT_ID"}'`
-2. Share file with each attendee: `gws drive permissions create --params '{"fileId": "FILE_ID"}' --json '{"role": "reader", "type": "user", "emailAddress": "attendee@company.com"}'`
-3. Verify sharing: `gws drive permissions list --params '{"fileId": "FILE_ID"}' --format table`
-
+1. **Get Event Details & Attendees**: Call the `manage_calendar` tool with `action: "list"` to retrieve details of the target event, including the list of invited emails in `attendees`.
+2. **Update Event with Materials**: Add links to documents or meeting materials in the event body by calling `manage_calendar` with `action: "update"`, specifying `eventId`, and providing the updated description in `description`.
+3. **Verify Event Details**: Run `manage_calendar` with `action: "list"` to verify that the materials and links are clearly published to the event details for all attendees to access.

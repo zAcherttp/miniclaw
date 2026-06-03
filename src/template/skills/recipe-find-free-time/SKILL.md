@@ -1,27 +1,19 @@
 ---
 name: recipe-find-free-time
-description: "Query Google Calendar free/busy status for multiple users to find a meeting slot."
+description: "Query calendar free/busy status for attendees to find a meeting slot."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "scheduling"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-calendar
 ---
 
 # Find Free Time Across Calendars
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-calendar`
-
-Query Google Calendar free/busy status for multiple users to find a meeting slot.
+Query calendar free/busy status to find an optimal meeting slot.
 
 ## Steps
 
-1. Query free/busy: `gws calendar freebusy query --json '{"timeMin": "2024-03-18T08:00:00Z", "timeMax": "2024-03-18T18:00:00Z", "items": [{"id": "user1@company.com"}, {"id": "user2@company.com"}]}'`
-2. Review the output to find overlapping free slots
-3. Create event in the free slot: `gws calendar +insert --summary 'Meeting' --attendee user1@company.com --attendee user2@company.com --start '2024-03-18T14:00:00' --end '2024-03-18T14:30:00'`
-
+1. **Check Schedule**: Call the `manage_calendar` tool with `action: "list"`, setting `timeRange: "week"` or a specific number of `days` to view existing schedules.
+2. **Identify Gaps**: Review the returned list of events to identify open slots where no conflicting bookings exist.
+3. **Book the Event**: Call `manage_calendar` with `action: "create"`, specifying the `summary`, `start` and `end` times matching the discovered open slot, and providing the list of invitees in `attendees`.

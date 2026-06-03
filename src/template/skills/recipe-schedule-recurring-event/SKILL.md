@@ -1,26 +1,19 @@
 ---
 name: recipe-schedule-recurring-event
-description: "Create a recurring Google Calendar event with attendees."
+description: "Create a schedule holding block on your Calendar with attendees."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "scheduling"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-calendar
 ---
 
-# Schedule a Recurring Meeting
+# Schedule a Meeting with Attendees
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-calendar`
-
-Create a recurring Google Calendar event with attendees.
+Create a calendar event and invite your team or attendees cleanly.
 
 ## Steps
 
-1. Create recurring event: `gws calendar events insert --params '{"calendarId": "primary"}' --json '{"summary": "Weekly Standup", "start": {"dateTime": "2024-03-18T09:00:00", "timeZone": "America/New_York"}, "end": {"dateTime": "2024-03-18T09:30:00", "timeZone": "America/New_York"}, "recurrence": ["RRULE:FREQ=WEEKLY;BYDAY=MO"], "attendees": [{"email": "team@company.com"}]}'`
-2. Verify it was created: `gws calendar +agenda --days 14 --format table`
-
+1. **Verify Availability**: Call the `manage_calendar` tool with `action: "list"` to search the schedule and ensure the target time slot is open for all attendees.
+2. **Schedule the Meeting**: Call `manage_calendar` with `action: "create"`, providing the `summary` (e.g. "Weekly Sync"), `start` time, `end` time, and specifying invitee emails in the `attendees` array.
+3. **Verify Booking**: Call `manage_calendar` with `action: "list"` for the upcoming week to verify the event is correctly created and reflected in your agenda.

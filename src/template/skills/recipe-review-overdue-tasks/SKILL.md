@@ -1,27 +1,19 @@
 ---
 name: recipe-review-overdue-tasks
-description: "Find Google Tasks that are past due and need attention."
+description: "Find overdue reminders and tasks that need attention."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "productivity"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-tasks
 ---
 
-# Review Overdue Tasks
+# Review Overdue Tasks and Reminders
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-tasks`
-
-Find Google Tasks that are past due and need attention.
+Find overdue reminders or checklist items that are past their target times and need immediate attention.
 
 ## Steps
 
-1. List task lists: `gws tasks tasklists list --format table`
-2. List tasks with status: `gws tasks tasks list --params '{"tasklist": "TASKLIST_ID", "showCompleted": false}' --format table`
-3. Review due dates and prioritize overdue items
-
+1. **List All Reminders**: Call the `manage_reminders` tool with `action: "list"` to fetch all scheduled and fired tasks/reminders.
+2. **Identify Overdue / Pending Items**: Filter and review the output items that have status `"pending"` or `"fired"`, comparing their `targetTime` against the current system time to identify overdue ones.
+3. **Take Action**: Prioritize, complete, or reschedule overdue items. Call `manage_reminders` with `action: "update"` and `id` to mark them as completed (`status: "completed"`) or push them to a new `targetTime`.

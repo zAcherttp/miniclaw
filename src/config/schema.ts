@@ -6,7 +6,7 @@ export const AgentConfigSchema = z.object({
 	system_prompt: z.string().optional(),
 	max_iterations: z.number().default(15),
 	temperature: z.number().default(0.7),
-	reasoning_effort: z.string().optional(),
+	reasoning_effort: z.string().default("medium"),
 	compaction_trigger_tokens: z.number().default(220000),
 	skills_dirs: z.array(z.string()).default(["skills"]),
 });
@@ -39,6 +39,7 @@ export const AppConfigSchema = z.object({
 		model: "ollama:gemma4:31b-cloud",
 		max_iterations: 15,
 		temperature: 0.7,
+		reasoning_effort: "medium",
 		compaction_trigger_tokens: 220000,
 		skills_dirs: ["skills"],
 	}),

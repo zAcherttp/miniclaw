@@ -1,28 +1,19 @@
 ---
 name: recipe-plan-weekly-schedule
-description: "Review your Google Calendar week, identify gaps, and add events to fill them."
+description: "Review your calendar week, identify gaps, and add events to fill them."
 metadata:
-  version: 0.22.5
+  version: 1.0.0
   openclaw:
     category: "recipe"
     domain: "scheduling"
-    requires:
-      bins:
-        - gws
-      skills:
-        - gws-calendar
 ---
 
-# Plan Your Weekly Google Calendar Schedule
+# Plan Your Weekly Schedule
 
-> **PREREQUISITE:** Load the following skills to execute this recipe: `gws-calendar`
-
-Review your Google Calendar week, identify gaps, and add events to fill them.
+Review your upcoming calendar week, identify gaps, and add events to organize your week.
 
 ## Steps
 
-1. Check this week's agenda: `gws calendar +agenda`
-2. Check free/busy for the week: `gws calendar freebusy query --json '{"timeMin": "2025-01-20T00:00:00Z", "timeMax": "2025-01-25T00:00:00Z", "items": [{"id": "primary"}]}'`
-3. Add a new event: `gws calendar +insert --summary 'Deep Work Block' --start '2026-01-21T14:00:00' --end '2026-01-21T16:00:00'`
-4. Review updated schedule: `gws calendar +agenda`
-
+1. **Check Weekly Agenda**: Call the `manage_calendar` tool with `action: "list"` and `timeRange: "week"` to check your current schedule.
+2. **Add Missing Blocks**: Call `manage_calendar` with `action: "create"` to schedule deep work blocks, weekly syncs, or task deadlines.
+3. **Verify Updated Schedule**: Run `manage_calendar` with `action: "list"` and `timeRange: "week"` to confirm the new items are correctly blocked out and conflict-free.
