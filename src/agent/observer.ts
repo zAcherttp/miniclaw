@@ -44,6 +44,7 @@ export class AgentEventObserver {
 	private readonly streamId: string;
 	private hasReasoned = false;
 	private reasoningClosed = false;
+	public cachedSystemPrompt?: string;
 
 	constructor(
 		bus: MessageBus,
@@ -202,8 +203,13 @@ export class AgentEventObserver {
 		});
 	}
 
-	async publishToolStart(toolNames: string[]) {
-		const hintText = `⚙️ Calling ${toolNames.join(", ")}\n`;
+	async publishToolStart(
+		// biome-ignore lint/suspicious/noExplicitAny: tool arguments can be any primitive or structured value
+		toolCalls: { name: string; args: Record<string, any> }[],
+	) {
+		const hintText = toolCalls
+			.map((tc) => `${formatToolCall(tc.name, tc.args)}\n`)
+			.join("");
 		await this.bus.publishOutbound({
 			channel: this.channel,
 			chat_id: this.chatId,
@@ -211,7 +217,7 @@ export class AgentEventObserver {
 			metadata: {
 				_stream_id: `tools-${this.streamId}`,
 				_stream_delta: true,
-				_tool_names: toolNames,
+				_tool_names: toolCalls.map((tc) => tc.name),
 			},
 		});
 	}
@@ -229,5 +235,58 @@ export class AgentEventObserver {
 				_stream_end: true,
 			},
 		});
+	}
+}
+
+// biome-ignore lint/suspicious/noExplicitAny: arguments are dynamically inspected depending on the tool type
+function formatToolCall(name: string, args: Record<string, any> = {}): string {
+	const getBasename = (filePath?: string) => {
+		if (!filePath) return "unknown";
+		const parts = filePath.replace(/\\/g, "/").split("/");
+		return parts[parts.length - 1] || "unknown";
+	};
+
+	const truncate = (str?: string, maxLen = 40) => {
+		if (!str) return "";
+		if (str.length <= maxLen) return str;
+		return `${str.slice(0, maxLen)}...`;
+	};
+
+	switch (name) {
+		case "search_skills":
+			return `⚙️ Searching skills for "${args.query || ""}"...`;
+		case "read_file":
+			return `⚙️ Reading file: ${getBasename(args.file_path || args.path)}...`;
+		case "write_file":
+			return `⚙️ Writing file: ${getBasename(args.path || args.file_path)}...`;
+		case "edit_file":
+			return `⚙️ Editing file: ${getBasename(args.file_path || args.path)}...`;
+		case "list_files":
+			return `⚙️ Listing files in "${args.path || "."}"...`;
+		case "grep_search":
+			return `⚙️ Searching files for "${args.query || ""}"...`;
+		case "execute":
+			return `⚙️ Running command: ${truncate(args.command)}...`;
+		case "remember":
+			return `⚙️ Remembering fact: "${truncate(args.content)}"...`;
+		case "recall":
+			return `⚙️ Recalling memories for "${args.query || ""}"...`;
+		case "manage_reminders": {
+			const action = args.action || "list";
+			if (action === "create") {
+				return `⚙️ Creating reminder: "${args.title || ""}"...`;
+			}
+			if (action === "update") {
+				return `⚙️ Updating reminder: ${args.id || ""}...`;
+			}
+			if (action === "delete") {
+				return `⚙️ Deleting reminder: ${args.id || ""}...`;
+			}
+			return `⚙️ Listing reminders...`;
+		}
+		case "write_todos":
+			return `⚙️ Updating todo checklist...`;
+		default:
+			return `⚙️ Calling ${name}...`;
 	}
 }

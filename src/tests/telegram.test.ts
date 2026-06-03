@@ -369,7 +369,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 		const dateSpy = vi.spyOn(Date, "now").mockReturnValue(t0);
 
 		apiCalls.length = 0;
-		await channel.sendDelta("12345", "⚙️ Calling search_skills\n", {
+		await channel.sendDelta("12345", '⚙️ Searching skills for "calendar"...\n', {
 			_stream_id: "tools-123",
 			_stream_delta: true,
 			_tool_names: ["search_skills"],
@@ -378,8 +378,9 @@ describe("Telegram Channel Integration & Recovery", () => {
 		// Verify draft is created
 		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
 		let draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
-		expect(draftCall?.payload.text).toBe("⚙️ Calling search_skills\n");
-
+		expect(draftCall?.payload.text).toBe(
+			'⚙️ Searching skills for "calendar"...\n',
+		);
 		// Conclude the first tool block (stream_end for tools)
 		apiCalls.length = 0;
 		await channel.sendDelta("12345", "", {
@@ -395,7 +396,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 
 		// Send delta for second tool start
 		apiCalls.length = 0;
-		await channel.sendDelta("12345", "⚙️ Calling read_file\n", {
+		await channel.sendDelta("12345", "⚙️ Reading file: SKILL.md...\n", {
 			_stream_id: "tools-123",
 			_stream_delta: true,
 			_tool_names: ["read_file"],
@@ -405,7 +406,27 @@ describe("Telegram Channel Integration & Recovery", () => {
 		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
 		draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
 		expect(draftCall?.payload.text).toBe(
-			"⚙️ Calling search_skills\n⚙️ Calling read_file\n",
+			'⚙️ Searching skills for "calendar"...\n⚙️ Reading file: SKILL.md...\n',
+		);
+
+		// Advance time and send third tool start (making it total of 3 tools > 2)
+		dateSpy.mockReturnValue(t0 + 2000);
+		apiCalls.length = 0;
+		await channel.sendDelta(
+			"12345",
+			"⚙️ Running command: lark-cli calendar...\n",
+			{
+				_stream_id: "tools-123",
+				_stream_delta: true,
+				_tool_names: ["execute"],
+			},
+		);
+
+		// Verify it appended to the draft text and edited the draft
+		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
+		draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
+		expect(draftCall?.payload.text).toBe(
+			'⚙️ Searching skills for "calendar"...\n⚙️ Reading file: SKILL.md...\n⚙️ Running command: lark-cli calendar...\n',
 		);
 
 		// Now start and stream the main response text
@@ -429,13 +450,89 @@ describe("Telegram Channel Integration & Recovery", () => {
 			toMarkdownV2("Here is the final response."),
 		);
 
-		// The concluded tool hint
+		// The concluded tool hint (should be wrapped in blockquote since totalCalls = 3 > 2)
+		const toolHintText = sendCalls[1].payload.text as string;
+		expect(toolHintText).toContain("Worked for 2 seconds");
+		expect(toolHintText).toContain("<blockquote expandable>");
+		expect(toolHintText).toContain('⚙️ Searching skills for "calendar"...');
+		expect(toolHintText).toContain("⚙️ Reading file: SKILL.md...");
+		expect(toolHintText).toContain("⚙️ Running command: lark-cli calendar...");
+		expect(toolHintText).toContain("</blockquote>");
+
+		dateSpy.mockRestore();
+		await channel.stop();
+	});
+
+	it("should not wrap tool hints in expandable blockquote if there are 2 or fewer tool calls", async () => {
+		const { channel, bot } = setupChannel(["*"]);
+		const apiCalls: { method: string; payload: Record<string, unknown> }[] = [];
+
+		bot.api.config.use((async (
+			_prev: unknown,
+			method: string,
+			payload: unknown,
+		) => {
+			apiCalls.push({ method, payload: payload as Record<string, unknown> });
+			return { ok: true, result: {} };
+		}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
+
+		await channel.start();
+
+		// Simulate inbound message to start turn timing
+		const mockUpdate = makeMessageUpdate(
+			{
+				message_id: 502,
+				text: "Run some tools please",
+			},
+			{
+				update_id: 30002,
+			},
+		);
+		await bot.handleUpdate(mockUpdate);
+
+		const t0 = Date.now();
+		const dateSpy = vi.spyOn(Date, "now").mockReturnValue(t0);
+
+		// Send delta for first tool start
+		await channel.sendDelta("12345", '⚙️ Searching skills for "calendar"...\n', {
+			_stream_id: "tools-123",
+			_stream_delta: true,
+			_tool_names: ["search_skills"],
+		});
+
+		// Conclude the first tool block
+		await channel.sendDelta("12345", "", {
+			_stream_id: "tools-123",
+			_stream_end: true,
+		});
+
+		// Advance time
+		dateSpy.mockReturnValue(t0 + 1000);
+
+		// Send delta for second tool start (total = 2)
+		await channel.sendDelta("12345", "⚙️ Reading file: SKILL.md...\n", {
+			_stream_id: "tools-123",
+			_stream_delta: true,
+			_tool_names: ["read_file"],
+		});
+
+		// Stream main response and conclude turn
+		await channel.sendDelta("12345", "Here is the response.");
+		apiCalls.length = 0;
+		await channel.sendDelta("12345", "", {
+			_stream_end: true,
+		});
+
+		const sendCalls = apiCalls.filter((c) => c.method === "sendMessage");
+		expect(sendCalls).toHaveLength(2);
+
 		const toolHintText = sendCalls[1].payload.text as string;
 		expect(toolHintText).toContain("Worked for 1 seconds");
-		expect(toolHintText).toContain("<blockquote expandable>");
-		expect(toolHintText).toContain("⚙️ Calling search_skills");
-		expect(toolHintText).toContain("⚙️ Calling read_file");
-		expect(toolHintText).toContain("</blockquote>");
+		// Should NOT contain the collapsible blockquote tags
+		expect(toolHintText).not.toContain("<blockquote expandable>");
+		expect(toolHintText).not.toContain("</blockquote>");
+		expect(toolHintText).toContain('⚙️ Searching skills for "calendar"...');
+		expect(toolHintText).toContain("⚙️ Reading file: SKILL.md...");
 
 		dateSpy.mockRestore();
 		await channel.stop();

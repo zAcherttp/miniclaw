@@ -25,7 +25,7 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 	const mockConfig: AppConfig = {
 		agent: {
 			model: "ollama:gemma4:31b-cloud",
-			max_iterations: 15,
+			max_iterations: 30,
 			temperature: 0.7,
 			compaction_trigger_tokens: 220000,
 			skills_dirs: ["skills"],

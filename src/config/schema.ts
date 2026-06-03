@@ -4,7 +4,7 @@ export const AgentConfigSchema = z.object({
 	model: z.string().default("ollama:gemma4:31b-cloud"),
 	summarization_model: z.string().optional(),
 	system_prompt: z.string().optional(),
-	max_iterations: z.number().default(15),
+	max_iterations: z.number().default(30),
 	temperature: z.number().default(0.7),
 	reasoning_effort: z.string().default("medium"),
 	compaction_trigger_tokens: z.number().default(220000),
@@ -37,7 +37,7 @@ export const ChannelsConfigSchema = z.object({
 export const AppConfigSchema = z.object({
 	agent: AgentConfigSchema.default({
 		model: "ollama:gemma4:31b-cloud",
-		max_iterations: 15,
+		max_iterations: 30,
 		temperature: 0.7,
 		reasoning_effort: "medium",
 		compaction_trigger_tokens: 220000,

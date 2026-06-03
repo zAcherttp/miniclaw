@@ -432,7 +432,16 @@ export class TelegramChannel extends Channel {
 		};
 
 		const escapedText = escapeHtml(toolStream.text.trim());
-		const finalContent = `Worked for ${timeStr}\n<blockquote expandable>\n${escapedText}\n</blockquote>`;
+
+		let totalCalls = 0;
+		for (const count of toolStream.toolCounts.values()) {
+			totalCalls += count;
+		}
+
+		const finalContent =
+			totalCalls > 2
+				? `Worked for ${timeStr}\n<blockquote expandable>\n${escapedText}\n</blockquote>`
+				: `Worked for ${timeStr}\n${escapedText}`;
 
 		try {
 			await this.send({

@@ -95,53 +95,63 @@ async function agentNode(
 		agent,
 	} = config?.configurable || {};
 
-	// 1. Load latest memory/context guidelines dynamically before model call
-	const memoryContext = workspaceDir
-		? await ContextEngineeringManager.loadMemoryFiles(workspaceDir)
-		: "";
+	let systemPrompt = observer?.cachedSystemPrompt || "";
 
-	// 2. Fetch and inject User Profile & Goals memory dynamically
-	let memoryPrompt = "";
-	if (appConfig) {
-		try {
-			const memoryManager = MemoryManager.getInstance(appConfig);
-			memoryPrompt = await memoryManager.generatePromptBlock();
-		} catch (err) {
-			logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
+	if (!systemPrompt) {
+		// 1. Load latest memory/context guidelines dynamically before model call
+		const memoryContext = workspaceDir
+			? await ContextEngineeringManager.loadMemoryFiles(workspaceDir)
+			: "";
+
+		// 2. Fetch and inject User Profile & Goals memory dynamically
+		let memoryPrompt = "";
+		if (appConfig) {
+			try {
+				const memoryManager = MemoryManager.getInstance(appConfig);
+				memoryPrompt = await memoryManager.generatePromptBlock();
+			} catch (err) {
+				logger.error(err, "[AgentNode] Failed to fetch User Profile memory");
+			}
+		}
+
+		const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
+		let skillsPrompt = "";
+		if (workspaceDir) {
+			try {
+				const loadedSkills = await SkillsManager.loadSkills(
+					workspaceDir,
+					skillsDirs,
+				);
+				const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
+					"workflows",
+				]);
+				skillsPrompt = await SkillsManager.generatePromptBlock([
+					...loadedSkills,
+					...loadedWorkflows,
+				]);
+			} catch (err) {
+				logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
+			}
+		}
+
+		const systemInfoBlock = workspaceDir
+			? getSystemInfoBlock(workspaceDir)
+			: "";
+
+		const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
+		const promptParts = [
+			basePrompt,
+			systemInfoBlock,
+			memoryContext,
+			skillsPrompt,
+			memoryPrompt,
+		].filter(Boolean);
+		systemPrompt = `${promptParts.map((p) => p.trim()).join("\n\n")}\n`;
+
+		if (observer) {
+			observer.cachedSystemPrompt = systemPrompt;
 		}
 	}
-
-	const skillsDirs = appConfig?.agent?.skills_dirs ?? ["skills"];
-	let skillsPrompt = "";
-	if (workspaceDir) {
-		try {
-			const loadedSkills = await SkillsManager.loadSkills(
-				workspaceDir,
-				skillsDirs,
-			);
-			const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
-				"workflows",
-			]);
-			skillsPrompt = await SkillsManager.generatePromptBlock([
-				...loadedSkills,
-				...loadedWorkflows,
-			]);
-		} catch (err) {
-			logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
-		}
-	}
-
-	const systemInfoBlock = workspaceDir ? getSystemInfoBlock(workspaceDir) : "";
-
-	const basePrompt = customSystemPrompt ?? DEFAULT_SYSTEM_PROMPT;
-	const promptParts = [
-		basePrompt,
-		systemInfoBlock,
-		memoryContext,
-		skillsPrompt,
-		memoryPrompt,
-	].filter(Boolean);
-	const systemPrompt = `${promptParts.map((p) => p.trim()).join("\n\n")}\n`;
 
 	// 3. Process built-in middleware (e.g. short-term summarization compaction)
 	let middlewareUpdates: BaseMessage[] | null = null;
@@ -326,7 +336,9 @@ async function toolsNode(
 
 	// 1. Notify the Observer that tool call execution is beginning
 	if (observer) {
-		await observer.publishToolStart(toolCalls.map((tc) => tc.name));
+		await observer.publishToolStart(
+			toolCalls.map((tc) => ({ name: tc.name, args: tc.args || {} })),
+		);
 	}
 
 	// 2. Execute tool calls sequentially
