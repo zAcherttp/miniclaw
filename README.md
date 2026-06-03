@@ -127,10 +127,10 @@ Follow the interactive prompt in your terminal and browser to select your Lark o
    pnpm dev init
    ```
    During the interactive initialization:
-   - Miniclaw will create its configuration at `~/.config/miniclaw/config.json`.
+   - Miniclaw will create its configuration at `~\.miniclaw\config.json`.
    - You will be asked if you want to include custom skills directories. Paths can be absolute, relative (resolved against the workspace directory), or home-expanded (using `~`).
    - Template skills suite will be automatically cloned to your configured workspace `skills` folder.
-   - An environment file template `.env` will be generated at `~/.config/miniclaw/.env`. Open it and populate your credentials (such as `TELEGRAM_BOT_TOKEN`, API keys, etc.).
+   - An environment file template `.env` will be generated at `~\.miniclaw\.env`. Open it and populate your credentials (such as `TELEGRAM_BOT_TOKEN`, API keys, etc.).
 
 ---
 
