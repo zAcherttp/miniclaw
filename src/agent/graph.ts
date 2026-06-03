@@ -134,10 +134,12 @@ async function agentNode(
 					const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
 						"workflows",
 					]);
-					skillsPrompt = await SkillsManager.generatePromptBlock([
-						...loadedSkills,
-						...loadedWorkflows,
-					]);
+					const uniqueSkills = Array.from(
+						new Map(
+							[...loadedSkills, ...loadedWorkflows].map((s) => [s.name, s]),
+						).values(),
+					);
+					skillsPrompt = await SkillsManager.generatePromptBlock(uniqueSkills);
 				} catch (err) {
 					logger.error(err, "[AgentNode] Failed to load dynamic agent skills");
 				}

@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import readline from "node:readline";
 import chalk from "chalk";
@@ -55,6 +56,17 @@ export function runOnboarding() {
 
 	// Clone template skills during onboarding setup
 	const wsDir = getWorkspaceDir(config.workspace_dir);
+
+	// Create all skills_dirs if they don't exist
+	for (const dirName of config.agent.skills_dirs) {
+		const targetDir = dirName.startsWith("~")
+			? dirName.replace("~", os.homedir())
+			: path.resolve(wsDir, dirName);
+		if (!fs.existsSync(targetDir)) {
+			fs.mkdirSync(targetDir, { recursive: true });
+		}
+	}
+
 	void SkillsManager.cloneTemplateSkills(wsDir);
 
 	print("You're all set! Try running miniclaw start to begin.");
@@ -99,6 +111,28 @@ program
 			print(
 				chalk.bold.cyan("Initializing Miniclaw with default configuration..."),
 			);
+
+			const customDirsAnswer = await askQuestion(
+				chalk.yellow("Do you want to add custom skill directories? (y/N): "),
+			);
+			if (customDirsAnswer.toLowerCase().trim() === "y") {
+				const pathsAnswer = await askQuestion(
+					chalk.yellow(
+						"Enter comma-separated absolute or relative paths to your custom skill suite:\n> ",
+					),
+				);
+				const customPaths = pathsAnswer
+					.split(",")
+					.map((p) => p.trim())
+					.filter((p) => p.length > 0);
+				if (customPaths.length > 0) {
+					config.agent.skills_dirs = [
+						...config.agent.skills_dirs,
+						...customPaths,
+					];
+				}
+			}
+
 			saveConfig(config);
 			print(chalk.green(`Configuration saved to ${cfgPath}`));
 		} else {
@@ -136,6 +170,17 @@ program
 			if (shouldWriteSkills) {
 				await SkillsManager.cloneTemplateSkills(wsDir);
 			}
+
+			// Ensure all skillsDirs exist
+			for (const dirName of config.agent.skills_dirs) {
+				const targetDir = dirName.startsWith("~")
+					? dirName.replace("~", os.homedir())
+					: path.resolve(wsDir, dirName);
+				if (!fs.existsSync(targetDir)) {
+					fs.mkdirSync(targetDir, { recursive: true });
+				}
+			}
+
 			print("You're all set! Try running miniclaw start to begin.");
 		} else {
 			print("No changes made.");

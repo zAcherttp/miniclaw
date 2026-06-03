@@ -1,5 +1,6 @@
 import { existsSync } from "node:fs";
 import fs from "node:fs/promises";
+import os from "node:os";
 import path from "node:path";
 import { z } from "zod";
 import { logger } from "@/utils/logger";
@@ -241,7 +242,11 @@ export class SkillsManager {
 		const seenNames = new Set<string>();
 
 		for (const dirName of skillsDirs) {
-			const targetDir = path.resolve(workspaceDir, dirName);
+			const targetDir = path.isAbsolute(dirName)
+				? dirName
+				: dirName.startsWith("~")
+					? dirName.replace("~", os.homedir())
+					: path.resolve(workspaceDir, dirName);
 			try {
 				const entries = await fs.readdir(targetDir, { withFileTypes: true });
 				const subdirs = entries.filter((e) => e.isDirectory());

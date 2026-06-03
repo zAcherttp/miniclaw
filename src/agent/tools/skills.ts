@@ -30,7 +30,11 @@ export const createSearchSkillsTool = (
 				const loadedWorkflows = await SkillsManager.loadSkills(workspaceDir, [
 					"workflows",
 				]);
-				const allSkills = [...loadedSkills, ...loadedWorkflows];
+				const allSkills = Array.from(
+					new Map(
+						[...loadedSkills, ...loadedWorkflows].map((s) => [s.name, s]),
+					).values(),
+				);
 				const term = query.toLowerCase();
 
 				const matches = allSkills.filter((s) => {
