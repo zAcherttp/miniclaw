@@ -37,6 +37,7 @@ describe("CompactionManager & Skill Creator", () => {
 	let mockBus: MessageBus;
 
 	beforeEach(() => {
+		MemoryManager.resetInstance();
 		tempDir = fs.mkdtempSync(
 			path.join(os.tmpdir(), "miniclaw-compaction-test-"),
 		);
