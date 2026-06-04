@@ -2,75 +2,322 @@
 \label{chap:theory}
 
 \section{Tổng quan về mô hình ngôn ngữ lớn (LLM) và Prompt Engineering}
-Các mô hình ngôn ngữ lớn (Large Language Models - LLMs) đóng vai trò là hạt nhân xử lý thông tin và suy luận chính trong hệ thống. Kỹ nghệ prompt (Prompt Engineering) giúp định hình hành vi, phong cách hội thoại và cách thức LLM đưa ra các quyết định gọi công cụ (tool call).
+Các mô hình ngôn ngữ lớn (Large Language Models – LLMs) đã trải qua một tiến trình phát triển nhanh chóng, khởi đầu từ các kiến trúc mạng nơ-ron hồi quy (RNN) và LSTM truyền thống – những mô hình vốn gặp hạn chế trong việc tính toán song song cũng như duy trì ngữ cảnh dài. Bước ngoặt quan trọng diễn ra vào năm 2017 khi Vaswani và các cộng sự đề xuất kiến trúc Transformer dựa trên cơ chế tự chú ý (self-attention). Cơ chế này cho phép mô hình tính toán mối liên hệ giữa tất cả các phần tử trong chuỗi cùng một lúc, tối ưu hóa khả năng xử lý song song quy mô lớn trên các hệ thống phần cứng chuyên dụng (GPU). Trên nền tảng đó, các dòng mô hình ngôn ngữ tự hồi quy (autoregressive) như GPT, LLaMA, hay Qwen được huấn luyện với các tập dữ liệu lên đến hàng ngàn tỷ token, từ đó mô phỏng được cấu trúc ngôn ngữ tự nhiên và thể hiện khả năng suy luận bước đầu.
+
+Về phương thức vận hành, các mô hình này xử lý văn bản bằng cách phân tách chuỗi ký tự đầu vào thành các đơn vị cơ sở gọi là token thông qua các thuật toán mã hóa (như Byte-Pair Encoding – BPE). Một trong những giới hạn kỹ thuật cố hữu mang tính thử thách của LLM là cửa sổ ngữ cảnh (context window) – định mức tối đa về số lượng token mô hình có thể xử lý trong một lượt gọi. Giới hạn này đã được nâng cấp đáng kể, từ mức tiêu chuẩn cũ (khoảng 8.192 token) lên tới hàng trăm ngàn, thậm chí hàng triệu token ở các kiến trúc thế hệ hiện tại. Khi độ dài phiên hội thoại vượt quá định mức này, mô hình thường gặp hiện tượng suy giảm khả năng duy trì thông tin hoặc phân tách ngữ cảnh không chính xác. Do đó, việc nghiên cứu và áp dụng các giải pháp kỹ nghệ ngữ cảnh (Context Engineering) trở thành một định hướng cần thiết.
+
+Nhằm định hình và điều phối hành vi của LLM mà không cần can thiệp vào quá trình tái huấn luyện trọng số (fine-tuning), kỹ nghệ prompt (Prompt Engineering) đóng vai trò bổ trợ then chốt. Đây là phương pháp thiết kế cấu trúc văn bản đầu vào để tối ưu hóa hiệu suất suy luận của mô hình. Trong các kiến trúc tác nhân thông minh (AI Agent), cấu trúc prompt thường được phân rã thành hai thành phần chính:
+\begin{itemize}
+  \item \textbf{System Prompt (Chỉ dẫn hệ thống):} Thiết lập cấu hình nền tảng, định hình vai trò của tác nhân, xác lập ranh giới vận hành, định dạng đầu ra và các ràng buộc logic xuyên suốt phiên làm việc.
+  \item \textbf{User Prompt (Yêu cầu người dùng):} Tiền đề chứa nội dung tương tác trực tiếp từ người dùng, có thể tích hợp cùng dữ liệu ngữ cảnh động được truy vấn từ các nguồn tài nguyên bên ngoài.
+\end{itemize}
+Bên cạnh đó, việc kết hợp các kỹ thuật bổ trợ như suy luận từng bước (Chain-of-Thought), cung cấp ví dụ mẫu (Few-shot prompting) và phân tích ngữ cảnh động đóng vai trò quan trọng trong việc nâng cao độ chính xác cho quá trình ra quyết định của LLM trong vòng lặp hệ thống.
 
 \section{Kiến trúc Agent và vòng lặp tác nhân (Agent Loop - ReAct)}
-Kiến trúc ReAct (Reasoning and Acting) cho phép tác nhân thông minh thực hiện đan xen giữa suy luận và hành động. Trợ lý ảo sẽ quan sát yêu cầu của người dùng, lập kế hoạch hành động, thực thi công cụ ngoại vi và tiếp tục quan sát kết quả để đưa ra câu trả lời cuối cùng.
+
+Khác với các hệ thống hội thoại truyền thống vốn chủ yếu phản hồi đơn lượt dựa trên truy vấn đầu vào, kiến trúc tác nhân thông minh (Agentic Architecture) hướng tới việc xây dựng một vòng lặp tự động (Agent Loop). Cơ chế này cho phép mô hình duy trì tiến trình suy luận liên tục, tự đánh giá để đưa ra quyết định hành động và tương tác động với môi trường bên ngoài.
+
+Khung lập luận phổ biến cấu thành nên vòng lặp này là ReAct (Reasoning and Acting). Phương pháp ReAct cho phép tác nhân kết hợp đan xen giữa quá trình suy luận logic và thực thi hành động thực tế. Cấu trúc cơ bản của vòng lặp ReAct bao gồm ba giai đoạn lặp lại:
+\begin{enumerate}
+  \item \textbf{Thought (Suy luận):} LLM phân tích trạng thái hiện tại của phiên làm việc để làm rõ mục tiêu của người dùng, đánh giá tính đầy đủ của thông tin hiện có và hoạch định bước xử lý tiếp theo.
+  \item \textbf{Action (Hành động):} Mô hình quyết định lựa chọn một công cụ phù hợp từ danh sách các hàm/API đã được định nghĩa trước (ví dụ: truy vấn cơ sở dữ liệu, ghi tệp, hoặc gọi API ngoại vi) kèm theo các tham số đầu vào tương ứng dưới dạng dữ liệu cấu trúc.
+  \item \textbf{Observation (Quan sát):} Hệ thống thực thi công cụ trong môi trường thực tế, ghi nhận kết quả đầu ra và tích hợp thông tin này ngược trở lại ngữ cảnh hội thoại của LLM như một tiền đề mới cho lượt suy luận kế tiếp.
+\end{enumerate}
+
+Vòng lặp này được duy trì cho đến khi giai đoạn \emph{Thought} của mô hình xác định rằng mục tiêu ban đầu đã được đáp ứng đầy đủ và tiến hành xuất câu trả lời cuối cùng (\emph{Final Answer}).
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Vòng lặp Agent ReAct.}
+  \begin{tikzpicture}[
+    node distance=1.8cm,
+    block/.style={rectangle, draw, fill=blue!5, rounded corners, minimum width=3.8cm, minimum height=1cm, align=center, font=\small},
+    decision/.style={diamond, draw, fill=orange!5, minimum width=3.2cm, minimum height=1cm, align=center, font=\small, inner sep=0pt},
+    arrow/.style={thick,->,>=stealth}
+  ]
+    \node (user) [block] {Nhận yêu cầu\\từ người dùng};
+    \node (thought) [block, below=0.5cm of user] {Quan sát và suy luận\\(Thought)};
+    \node (decide) [decision, below=0.8cm of thought] {Quyết định\\hành động?};
+    \node (action) [block, left=2.0cm of decide] {Thực thi công cụ\\(Action)};
+    \node (obs) [block, above=1.6cm of action] {Quan sát kết quả\\(Observation)};
+    \node (final) [block, below=0.8cm of decide] {Phản hồi\\người dùng};
+
+    \draw [arrow] (user) -- (thought);
+    \draw [arrow] (thought) -- (decide);
+    \draw [arrow] (decide) -- node[anchor=south, font=\scriptsize] {Gọi công cụ} (action);
+    \draw [arrow] (action) -- (obs);
+    \draw [arrow] (obs) -- (thought.west);
+    \draw [arrow] (decide) -- node[anchor=west, font=\scriptsize] {Hoàn thành} (final);
+  \end{tikzpicture}
+  \caption{Sơ đồ vòng lặp Agent ReAct kết hợp lập luận và hành động.}
   \label{fig:agent-react-loop}
 \end{figure}
 
+Trong các cấu hình thử nghiệm ban đầu, mô hình ReAct nguyên bản phụ thuộc nhiều vào khả năng sinh chuỗi văn bản tự do của LLM để phân tách cú pháp lệnh (ví dụ: tạo ra chuỗi định dạng đặc biệt dạng \texttt{Action: write\_file}). Tuy nhiên, phương thức tạo chuỗi tự do này tiềm ẩn rủi ro sai lệch cú pháp và làm giảm tính nhất quán khi triển khai thực tế.
+
+Do đó, các kiến trúc tác nhân hiện đại đã dịch chuyển từ cơ chế sinh văn bản tự do sang mô hình cấu trúc hóa thông qua \texttt{Tool Harness} (Bộ khung điều phối công cụ). Trong kiến trúc cải tiến này, khả năng gọi công cụ (Tool Call) được thiết kế tích hợp sâu vào tầng API của các mô hình ngôn ngữ lớn. Thay vì tự do tạo chuỗi lệnh, LLM được cung cấp danh sách định dạng đầu ra chuẩn hóa (như JSON Schema). Mô hình sẽ trực tiếp xuất ra cấu trúc JSON chứa định danh hàm và các tham số tương ứng. Tầng ứng dụng (Tool Harness) sẽ chịu trách nhiệm bắt giữ cấu trúc này, thực hiện kiểm tra kiểu dữ liệu tự động, thực thi hàm nghiệp vụ an toàn và xử lý ngoại lệ trước khi trả kết quả về cho hệ thống. Sự cải tiến này giúp nâng cao đáng kể độ ổn định và tính toàn vẹn của tác nhân trong các ứng dụng thực tế ở quy mô sản xuất (production-ready).
+
 \section{Quản lý bộ nhớ tác nhân (Agent Memory)}
+Hệ thống bộ nhớ tác nhân đóng vai trò duy trì tính nhất quán hành vi của trợ lý ảo qua các phiên làm việc kéo dài, mô phỏng mô hình nhận thức nhằm hỗ trợ quá trình cá nhân hóa trải nghiệm tương tác. Kiến trúc bộ nhớ này thường được phân tầng thành hai lớp chính:
+
 \subsection{Bộ nhớ ngắn hạn (Short-term chat history)}
-Quản lý lịch sử hội thoại tức thời, được truyền thẳng vào prompt của LLM để duy trì ngữ cảnh trò chuyện hiện tại.
+Bộ nhớ ngắn hạn chịu trách nhiệm duy trì ngữ cảnh tương tác tức thời trong phiên làm việc hiện tại. Thành phần này được hiện thực hóa bằng cách lưu trữ toàn bộ chuỗi các thông điệp hoán đổi (bao gồm truy vấn của người dùng, phản hồi của tác nhân, các lượt gọi công cụ và kết quả thực thi tương ứng) dưới dạng một danh sách tuyến tính có thứ tự. Danh sách này được tích hợp trực tiếp vào cửa sổ ngữ cảnh của LLM trong mỗi lượt gọi API kế tiếp. Khi tần suất hội thoại tăng lên, dung lượng bộ nhớ ngắn hạn sẽ gia tăng đáng kể, từ đó gây áp lực lên giới hạn biên của cửa sổ ngữ cảnh mô hình.
+
 \subsection{Bộ nhớ dài hạn (Long-term vector Memory)}
-Lưu trữ các sự kiện, sở thích lâu dài của người dùng dưới dạng vector embedding, được truy vấn qua tìm kiếm tương đồng khi cần thiết.
+Bộ nhớ dài hạn đảm nhận việc lưu trữ các sự kiện, thông tin cấu hình và thói quen mang tính bền vững của người dùng xuyên suốt các phiên làm việc dài hạn. Lớp bộ nhớ này không thể chèn toàn bộ vào cấu trúc prompt do những hạn chế về mặt định mức token cũng như chi phí tính toán toán tử. Vì vậy, các thông tin dài hạn được phân tách thành các phân đoạn văn bản độc lập và lưu trữ trong một cơ sở dữ liệu vector (Vector Database) ngoại vi \cite{memverge2026memmachine}.
+
+Quy trình truy vấn và lưu trữ dữ liệu dài hạn dựa trên mô hình nhúng văn bản (Text Embedding) để nhúng các phân đoạn ngôn ngữ thành các vector số thực đa chiều, số chiều của vector phụ thuộc vào loại mô hình nhúng được sử dụng (ví dụ: 768 hoặc 1536 chiều). Khi tiếp nhận yêu cầu mới, hệ thống chuyển đổi truy vấn đó thành một vector đại diện $u$ và thực hiện tìm kiếm tương đồng ngữ nghĩa trên không gian lưu trữ của các vector ký ức $v$ thông qua độ đo tương đồng Cosine (Cosine Similarity):
+\begin{equation}
+  \text{CosineSimilarity}(u, v) = \frac{u \cdot v}{\|u\| \|v\|} = \frac{\sum_{i=1}^{n} u_i v_i}{\sqrt{\sum_{i=1}^{n} u_i^2} \sqrt{\sum_{i=1}^{n} v_i^2}}
+\end{equation}
+Các phân đoạn ký ức có chỉ số tương đồng cao nhất (vượt qua ngưỡng cấu hình hệ thống) sẽ được trích xuất động và bổ sung vào prompt dưới dạng ngữ cảnh tham chiếu bổ trợ, cho phép tác nhân tái hiện thông tin lịch sử một cách có chọn lọc \cite{yu2026agentic}.
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Mô hình phân tầng bộ nhớ tác nhân.}
+  \begin{tikzpicture}[
+    node distance=1.5cm,
+    block/.style={rectangle, draw, fill=blue!5, rounded corners, minimum width=3.6cm, minimum height=1.0cm, align=center, font=\small},
+    % CHỈNH SỬA: Thêm "aspect=0.4" để tạo độ bẹt/chiều sâu 3D (pitch) và cân đối lại width/height
+    database/.style={
+      cylinder, draw, fill=gray!10, 
+      shape border rotate=90, 
+      aspect=0.4, % <--- Giá trị càng nhỏ, góc nhìn nghiêng (pitch) 3D càng rõ
+      minimum width=2.4cm, % Đường kính mặt elip
+      minimum height=1.4cm, % Chiều cao của khối trụ
+      align=center, font=\small, text width=2.2cm
+    },
+    arrow/.style={thick,->,>=stealth}
+]
+    % Định nghĩa tọa độ các Node theo luồng phân tầng
+    \node (query) [block] {Yêu cầu\\hội thoại mới};
+    \node (embed) [block, below=0.6cm of query] {Mô hình nhúng và\\Tìm kiếm Vector};
+    \node (vector) [database, right=1.8cm of embed] {Cơ sở dữ liệu\\Vector};
+    
+    \node (mixer) [block, below=1.0cm of embed] {Bộ trộn ngữ cảnh\\(Context Mixer)};
+    \node (short) [block, left=1.5cm of mixer] {Lịch sử hội thoại\\ngắn hạn};
+    \node (system) [block, right=1.5cm of mixer] {Chỉ dẫn hệ thống\\(System Prompt)};
+    
+    \node (llm) [block, below=0.8cm of mixer] {Cửa sổ ngữ cảnh\\LLM};
+
+    % Đường nối luồng dữ liệu
+    \draw [arrow] (query) -- (embed);
+    \draw [arrow] (embed) -- node[anchor=south, font=\scriptsize] {Cosine Match} (vector);
+    
+    % Kết hợp các nguồn vào bộ trộn ngữ cảnh
+    \draw [arrow] (vector.south) -| (mixer.north east);
+    \draw [arrow] (short) -- (mixer);
+    \draw [arrow] (system) -- (mixer);
+    
+    % Đầu ra vào LLM
+    \draw [arrow] (mixer) -- (llm);
+  \end{tikzpicture}
+  \caption{Sơ đồ cấu trúc phân tầng bộ nhớ tác nhân ngắn hạn và dài hạn.}
   \label{fig:memory-hierarchy}
 \end{figure}
 
 \section{Kỹ nghệ ngữ cảnh (Context Engineering) và cơ chế tự động nén}
-Do giới hạn cửa sổ ngữ cảnh và chi phí token, cơ chế tự động nén ngữ cảnh (Context Compaction) sẽ tự động cô đọng các tin nhắn cũ thành các bản tóm tắt súc tích mà vẫn bảo toàn các sự kiện quan trọng.
+Trong các hệ thống tác nhân thông minh vận hành theo mô hình kiểm soát trạng thái liên tục (stateful), việc điều phối dung lượng ngữ cảnh trở thành một yếu tố kỹ thuật cần được cân nhắc kỹ lưỡng. Cửa sổ ngữ cảnh của các mô hình ngôn ngữ lớn không chỉ có giới hạn biên cố định, mà chi phí tính toán cùng độ trễ phản hồi (latency) thường tỷ lệ thuận với khối lượng dữ liệu đầu vào. Do đó, kỹ nghệ ngữ cảnh (Context Engineering) tập trung vào bài toán quản lý ngân sách token (token budgeting) một cách tối ưu.
+
+Hệ thống đề xuất triển khai cơ chế tự động nén ngữ cảnh (Context Compaction) dựa trên các định mức kích hoạt cụ thể nhằm tối ưu hóa tài nguyên ngữ cảnh ngắn hạn. Trong cấu hình thử nghiệm, ngưỡng kích hoạt nén hệ thống được thiết lập ở định mức \textbf{50.000 token} (compaction trigger tokens). Khi bộ đếm dữ liệu ghi nhận tổng độ dài lịch sử thông điệp vượt quá định mức này, tiến trình nén ngữ cảnh ngầm sẽ tự động được khởi chạy theo các giai đoạn sau:
+\begin{enumerate}
+  \item \textbf{Phân tách lịch sử:} Hệ thống chủ động giữ lại một số lượng thông điệp cố định gần nhất (ví dụ: 10 lượt tương tác gần nhất) nhằm duy trì tính liên tục của mạch hội thoại tức thời.
+  \item \textbf{Tóm tắt ngữ cảnh:} Các phân đoạn thông điệp cũ hơn được chuyển đến một phân hệ LLM tóm tắt chuyên biệt kèm theo các chỉ dẫn cấu trúc để trích xuất thông tin cốt lõi.
+  \item \textbf{Cập nhật hồ sơ dữ liệu:} Phân hệ LLM thực hiện phân tích và hoàn tác hai luồng dữ liệu cấu trúc hóa:
+    \begin{itemize}
+      \item Một bản ghi tóm tắt súc tích các sự kiện chính hoặc các tác vụ đã được giải quyết thành công.
+      \item Các thông tin cập nhật bổ sung vào hồ sơ người dùng (User Profile), ví dụ như các cấu hình lịch trình mới được thiết lập.
+    \end{itemize}
+  \item \textbf{Giải phóng bộ lưu vết (Checkpointer):} Hệ thống đồng bộ kết quả tóm tắt mới vào bộ lưu trữ trạng thái lâu dài, đồng thời giải phóng các phân đoạn dữ liệu lịch sử thô trong cơ sở dữ liệu lưu vết (checkpointer). Quá trình này giúp tối ưu hóa dung lượng bộ nhớ ngắn hạn nhưng vẫn đảm bảo tính toàn vẹn của các thực thể thông tin cốt lõi.
+\end{enumerate}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Quy trình nén và dọn dẹp ngữ cảnh.}
+  \begin{tikzpicture}[
+    node distance=1.4cm,
+    block/.style={rectangle, draw, fill=blue!5, rounded corners, minimum width=3.8cm, minimum height=1cm, align=center, font=\small},
+    % Thêm text width cho decision để kiểm soát xuống dòng tự động đẹp hơn
+    decision/.style={diamond, draw, fill=orange!5, minimum width=3.2cm, minimum height=1cm, align=center, font=\small, inner sep=0pt, text width=2.4cm},
+    arrow/.style={thick,->,>=stealth}
+  ]
+    % Định nghĩa các node
+    \node (inbound) [block] {Tin nhắn\\hội thoại mới};
+    \node (check) [decision, below=0.5cm of inbound] {Độ dài lịch sử\\> 50.000 token?};
+    \node (normal) [block, right=1.8cm of check] {Lưu trữ và\\xử lý bình thường};
+    \node (extract) [block, below=0.8cm of check] {Trích xuất\\tin nhắn cũ};
+    \node (llm) [block, below=0.5cm of extract] {Mô hình tóm tắt\\và cập nhật hồ sơ};
+    \node (save) [block, below=0.5cm of llm] {Lưu hồ sơ\\và bản tóm tắt mới};
+    \node (prune) [block, below=0.5cm of save] {Giải phóng lịch sử\\tin nhắn thô};
+    \node (done) [block, below=0.6cm of prune] {Hoàn thành\\điều phối ngữ cảnh};
+
+    % Luồng mũi tên xử lý
+    \draw [arrow] (inbound) -- (check);
+    \draw [arrow] (check) -- node[anchor=south, font=\scriptsize] {Không} (normal);
+    \draw [arrow] (check) -- node[anchor=west, font=\scriptsize] {Có} (extract);
+    \draw [arrow] (extract) -- (llm);
+    \draw [arrow] (llm) -- (save);
+    \draw [arrow] (save) -- (prune);
+    \draw [arrow] (prune) -- (done);
+    
+    % Kết nối luồng xử lý bình thường vòng xuống điểm kết thúc chung để sơ đồ khép kín
+    \draw [arrow] (normal.south) |- ([yshift=0.3cm]done.north) -- (done.north);
+  \end{tikzpicture}
+  \caption{Quy trình điều phối và nén ngữ cảnh tự động tối ưu hóa ngân sách token.}
   \label{fig:context-compaction}
 \end{figure}
 
-\section{Tổng hợp kỹ năng với sự tham gia của người dùng (Workflow Consolidation — HITL)}
-Quy trình Human-in-the-loop (HITL) được áp dụng khi hệ thống phát hiện các hành động lặp đi lặp lại của người dùng để đề xuất một quy trình hoạt động (Workflow) dưới dạng kỹ năng mới. Tác nhân thông minh sẽ tạo đàm thoại đề xuất và chỉ lưu chính thức tệp kỹ năng sau khi được con người duyệt qua.
+\section{Trích xuất và lưu trữ quy trình làm việc tái sử dụng được (Reusable Workflow Extraction — HITL)}
+Trong các hệ thống tác nhân thông minh, khi thực hiện các nhiệm vụ phức tạp, tác nhân thường phải trải qua một chuỗi dài các lượt gọi công cụ liên tiếp để tìm kiếm thông tin và khám phá ngữ cảnh (skill/context discovery). Việc liên tục lặp lại chuỗi công cụ dài này cho các yêu cầu tương tự không chỉ gây tiêu tốn tài nguyên token mà còn làm tăng độ trễ và khả năng tích lũy sai số. Để tối ưu hóa hiệu năng vận hành, mô hình \textbf{Reusable Workflow Extraction} (Trích xuất quy trình làm việc tái sử dụng được) được áp dụng nhằm tự động nhận diện, đóng gói chuỗi hành động thành một quy trình hoàn chỉnh. Khi gặp lại bài toán tương tự, tác nhân có thể "nhảy cóc" trực tiếp đến giải pháp đã được lưu trữ trước đó mà không cần thực hiện lại các bước dò đường phức tạp. Để đảm bảo tính chính xác của quy trình được trích xuất, cơ chế \textbf{Human-in-the-loop} (HITL - Sự tham gia kiểm soát của con người) được tích hợp để người dùng duyệt và hiệu chỉnh trước khi lưu trữ.
+
+Nguyên lý hoạt động của quy trình này dựa trên việc nhận diện các chuỗi hành động có tính tuần hoàn. Trong tiến trình điều phối và nén ngữ cảnh phiên, hệ thống thực hiện phân tích nhằm phát hiện các khuôn mẫu lệnh mà người dùng thường xuyên yêu cầu theo một trình tự logic cố định (ví dụ: truy vấn dữ liệu định kỳ, lọc thông tin phân đoạn, hoặc thiết lập nhắc nhở đồng bộ). Thay vì yêu cầu người dùng phải lặp lại các bước thiết lập này một cách thủ công, tác nhân sẽ chủ động đề xuất đóng gói trình tự đó thành một quy trình làm việc (workflow/skill) có khả năng tái sử dụng.
+
+Quy trình tương tác HITL này được hiện thực hóa qua các giai đoạn sau:
+\begin{enumerate}
+  \item \textbf{Đề xuất quy trình:} Hệ thống khởi tạo mã nguồn cấu trúc hoặc tập chỉ dẫn cho quy trình mới dưới dạng một tệp tài liệu chuẩn hóa, mô tả tường minh logic điều khiển và lưu vết tạm thời dưới định dạng \texttt{SKILL.md}.
+  \item \textbf{Yêu cầu phê duyệt:} Tác nhân thiết lập một luồng hội thoại phụ để thông báo đến người dùng về cấu trúc quy trình được đề xuất, giải trình các hành vi tự động hóa tương ứng và ghi nhận phản hồi kiểm soát thông qua kênh giao tiếp ngoại vi (Telegram Bot API).
+  \item \textbf{Nạp động quy trình (Dynamic Loading):} 
+    \begin{itemize}
+      \item Nếu người dùng chấp thuận (\emph{Approve}), tệp cấu trúc sẽ được chuyển từ trạng thái tạm thời sang lưu trữ chính thức tại thư mục vận hành (\texttt{workflows}). Hệ thống tiến hành quét dữ liệu và nạp động (dynamic loading) cấu hình này vào danh mục công cụ khả dụng của tác nhân mà không yêu cầu khởi động lại máy chủ.
+      \item Nếu người dùng từ chối (\emph{Reject}), hệ thống sẽ thực hiện giải phóng bản nháp, hủy bỏ đề xuất và khôi phục lại trạng thái vận hành cốt lõi ban đầu.
+    \end{itemize}
+\end{enumerate}
 
 \begin{figure}[H]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Vòng lặp phản hồi Human-in-the-loop.}
+  \begin{tikzpicture}[
+    node distance=1.4cm,
+    block/.style={rectangle, draw, fill=blue!5, rounded corners, minimum width=3.8cm, minimum height=1cm, align=center, font=\small},
+    decision/.style={diamond, draw, fill=orange!5, minimum width=3.2cm, minimum height=1cm, align=center, font=\small, inner sep=0pt, text width=2.4cm},
+    arrow/.style={thick,->,>=stealth}
+  ]
+    % Định nghĩa các node trong luồng thuật toán
+    \node (detect) [block] {Phát hiện mẫu\\hành vi lặp lại};
+    \node (write) [block, below=0.5cm of detect] {Trích xuất quy trình\\thành tệp SKILL.md};
+    \node (telegram) [block, below=0.5cm of write] {Gửi yêu cầu\\phê duyệt Telegram};
+    \node (approve) [decision, below=0.6cm of telegram] {Người dùng\\chấp thuận?};
+    
+    % Nhánh Từ chối (Bên trái)
+    \node (reject) [block, left=1.8cm of approve] {Hủy bỏ bản nháp\\đề xuất};
+    
+    % Nhánh Đồng ý (Thẳng xuống)
+    \node (save) [block, below=1.0cm of approve] {Lưu tệp quy trình\\vào thư mục lưu trữ};
+    \node (load) [block, below=0.5cm of save] {Nạp động quy trình\\và kích hoạt công cụ};
+    
+    % Khối kết thúc chung cho cả 2 case
+    \node (restore) [block, below=0.8cm of load] {Khôi phục luồng\\hoạt động chính};
+
+    % Vẽ luồng điều khiển chính
+    \draw [arrow] (detect) -- (write);
+    \draw [arrow] (write) -- (telegram);
+    \draw [arrow] (telegram) -- (approve);
+    
+    % Điều hướng rẽ nhánh của khối quyết định
+    \draw [arrow] (approve) -- node[anchor=south, font=\scriptsize] {Từ chối} (reject);
+    \draw [arrow] (approve) -- node[anchor=west, font=\scriptsize] {Đồng ý} (save);
+    
+    % Luồng tiến trình của nhánh Đồng ý
+    \draw [arrow] (save) -- (load);
+    \draw [arrow] (load) -- (restore);
+    
+    % Luồng tiến trình của nhánh Từ chối (Đi vòng từ cạnh dưới của reject xuống đỉnh của restore)
+    \draw [arrow] (reject.south) |- ([yshift=0.4cm]restore.north) -- (restore.north);
+  \end{tikzpicture}
+  \caption{Sơ đồ vòng lặp phản hồi Human-in-the-loop phê duyệt quy trình làm việc mới.}
   \label{fig:hitl-feedback-loop}
 \end{figure}
 
 \section{Kỹ nghệ bộ công cụ tác nhân (Agent Tool Harness)}
-\label{sec:tool-harness}
-Trong kiến trúc tác nhân thông minh, nếu Context Engineering trả lời câu hỏi \emph{``Cho Agent biết gì?''} thì Tool Harness trả lời câu hỏi \emph{``Cho Agent làm gì?''}. Bộ công cụ tác nhân (Tool Harness) là tầng trung gian cho phép LLM tương tác với môi trường bên ngoài — từ truy xuất dữ liệu, quản lý lịch trình đến thao tác trên hệ thống tệp.
+Bộ công cụ tác nhân (Tool Harness) đóng vai trò là giao diện trung gian chịu trách nhiệm thiết lập kết nối giữa phân hệ suy luận cốt lõi (LLM) với môi trường thực thi của hệ điều hành và các dịch vụ mạng ngoại vi. Thành phần này chuyển hóa các đầu ra suy luận trừu tượng của mô hình thành các thao tác xử lý dữ liệu hoặc tương tác hệ thống cụ thể.
 
 \subsection{Khái niệm Tool Harness và vai trò trong vòng lặp Agent}
-Tool Harness là tập hợp các hàm được mô tả bằng lược đồ JSON (JSON Schema) và được đăng ký với LLM tại thời điểm chạy. Khi LLM quyết định cần thực hiện một hành động, nó sẽ phát ra một lời gọi công cụ (tool call) có cấu trúc, và hệ thống sẽ thực thi hàm tương ứng rồi trả kết quả ngược lại vào ngữ cảnh hội thoại.
-
-\subsection{Phân loại công cụ theo mức độ tác động}
-Các công cụ được phân thành ba nhóm theo mức độ tác động lên hệ thống:
+Một công cụ (Tool) trong kiến trúc đề xuất được đặc tả bởi hai thành phần bắt buộc:
 \begin{itemize}
-  \item \textbf{Chỉ đọc (read-only):} Truy vấn bộ nhớ, tìm kiếm kỹ năng — không gây thay đổi trạng thái.
-  \item \textbf{Ghi (write):} Tạo, cập nhật hoặc xóa dữ liệu nội bộ như nhắc nhở, ghi nhớ.
-  \item \textbf{Tác động phụ (side-effect):} Thực thi lệnh hệ thống, đọc/ghi tệp — cần kiểm soát ranh giới bảo mật.
+  \item \textbf{JSON Schema:} Bản mô tả chi tiết bao gồm định danh công cụ, chức năng nghiệp vụ bằng ngôn ngữ tự nhiên (hỗ trợ LLM định tuyến chính xác thời điểm sử dụng) và cấu trúc kiểu dữ liệu của các tham số đầu vào.
+  \item \textbf{Implementation Function:} Hàm xử lý mã nguồn (hiện thực bằng ngôn ngữ lập trình hệ thống như TypeScript/Python) chịu trách nhiệm tiếp nhận các tham số đã qua xác thực từ mô hình để tiến hành xử lý logic nghiệp vụ.
 \end{itemize}
 
-\subsection{Cơ chế định nghĩa và đăng ký công cụ}
-Mỗi công cụ được khai báo dưới dạng một đối tượng gồm tên, mô tả ngữ nghĩa và JSON Schema cho tham số đầu vào. Cơ chế đăng ký tự động tại thời điểm khởi tạo Agent đảm bảo tính nhất quán giữa lược đồ công cụ và các hàm xử lý thực thi tương ứng.
+Vòng lặp tác nhân tích hợp Tool Harness vận hành theo cơ chế thống nhất: LLM tiếp nhận toàn bộ ngữ cảnh phiên cùng danh sách cấu trúc của các công cụ khả dụng. Khi mô hình phát ra yêu cầu gọi công cụ (Tool Call Request), bộ điều phối hệ thống sẽ bắt giữ thông điệp, ánh xạ định danh công cụ với hàm xử lý tương ứng đã đăng ký, thực thi tiến trình an toàn và hoàn trả kết quả thu được về lại không gian ngữ cảnh của mô hình cho lượt xử lý tiếp theo.
+
+\subsection{LangGraph và sự trừu tượng hóa đồ thị trạng thái}
+Thư viện LangGraph cung cấp một mô hình trừu tượng hóa vòng lặp tác nhân dưới dạng Đồ thị có hướng (State Graph). Trong kiến trúc này, trạng thái chung của hệ thống (bao gồm lịch sử thông điệp và các biến trạng thái nội bộ) được phân phối qua các nút (Nodes) và được điều phối dòng chảy bởi các cạnh (Edges):
+\begin{itemize}
+  \item \textbf{Nút Agent (Agent Node):} Chứa mô hình ngôn ngữ lớn, có nhiệm vụ tiếp nhận trạng thái hiện tại của đồ thị để đưa ra phản hồi trực tiếp cho người dùng hoặc phát ra yêu cầu gọi công cụ phụ trợ.
+  \item \textbf{Nút Công cụ (Tools Node):} Tiếp nhận các yêu cầu gọi hàm từ trạng thái đồ thị, thực thi song song hoặc tuần tự các tiến trình tương ứng trong bộ khung Tool Harness, thu thập kết quả và cập nhật dữ liệu trở lại dòng trạng thái.
+  \item \textbf{Cạnh điều kiện (Conditional Edge):} Thực hiện kiểm tra logic xem thông điệp cuối cùng trong trạng thái đồ thị có tồn tại cấu trúc gọi công cụ hay không. Nếu có, cạnh điều kiện sẽ định tuyến luồng điều khiển sang nút Tools Node; ngược lại, luồng xử lý sẽ được dẫn hướng về điểm kết thúc hệ thống (\texttt{\_\_end\_\_}).
+\end{itemize}
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+    node distance=1.5cm,
+    block/.style={rectangle, draw, fill=blue!5, rounded corners, minimum width=3.5cm, minimum height=1cm, align=center, font=\small},
+    decision/.style={diamond, draw, fill=orange!5, minimum width=3.2cm, minimum height=1.0cm, align=center, font=\small, inner sep=0pt, text width=2.2cm},
+    point/.style={circle, draw, fill=red!10, minimum size=1cm, font=\small},
+    arrow/.style={thick,->,>=stealth}
+  ]
+    % Định nghĩa các điểm nút trong Đồ thị trạng thái LangGraph
+    \node (start) [point] {\texttt{\_\_start\_\_}};
+    \node (agent) [block, below=0.8cm of start] {Nút Agent\\(Agent Node)};
+    \node (cond) [decision, below=0.8cm of agent] {Kiểm tra\\Tool Call?};
+    \node (tools) [block, left=2.0cm of cond] {Nút Công cụ\\(Tools Node)};
+    \node (end) [point, below=0.8cm of cond] {\texttt{\_\_end\_\_}};
+
+    % Vẽ luồng dịch chuyển trạng thái
+    \draw [arrow] (start) -- (agent);
+    \draw [arrow] (agent) -- (cond);
+    
+    % Cạnh điều kiện định tuyến
+    \draw [arrow] (cond) -- node[anchor=south, font=\scriptsize] {Có Yêu cầu} (tools);
+    \draw [arrow] (cond) -- node[anchor=west, font=\scriptsize] {Không} (end);
+    
+    % Luồng quay ngược từ Tools Node về lại Agent Node để đánh giá lại trạng thái
+    \draw [arrow] (tools.north) |- ([yshift=0.4cm]agent.north) -- (agent.north);
+  \end{tikzpicture}
+  \caption{Sơ đồ trừu tượng hóa vòng lặp tác nhân dựa trên Đồ thị trạng thái LangGraph.}
+  \label{fig:langgraph-state-graph}
+\end{figure}
+
+\subsection{Phân loại công cụ và ranh giới bảo mật}
+Các công cụ tích hợp trong hệ thống được phân lớp chặt chẽ dựa trên mức độ tác động của chúng đối với tài nguyên máy chủ nhằm xác lập các ranh giới kiểm soát an toàn phù hợp:
+\begin{enumerate}
+  \item \textbf{Chỉ đọc (Read-only):} Các tác vụ truy vấn dữ liệu không làm thay đổi trạng thái hệ thống, ví dụ như đọc tệp tài liệu cấu hình, tìm kiếm ngữ nghĩa hoặc truy vấn cơ sở dữ liệu Vector.
+  \item \textbf{Ghi dữ liệu (Write):} Các tác vụ làm thay đổi trạng thái lưu trữ nội bộ của ứng dụng, bao gồm tạo mới thực thể lịch trình hoặc cập nhật danh mục ghi nhớ cá nhân.
+  \item \textbf{Có tác động phụ (Side-effect / System actions):} Các tác vụ tương tác trực tiếp với môi trường hệ điều hành máy chủ và mạng Internet, ví dụ như truyền phát thông báo qua email, tải xuống tài nguyên số hoặc thực thi các giao thức CLI phụ trợ.
+\end{enumerate}
+
+Nhằm đảm bảo tính an toàn trong quá trình thực thi và kiểm soát các rủi ro từ việc tiêm nhiễm chỉ dẫn (prompt injection) dẫn đến việc kích hoạt các câu lệnh hệ điều hành ngoài ý muốn, Tool Harness thiết lập một cơ chế cô lập nghiêm ngặt. Hệ thống vận hành các tác vụ có nguy cơ cao trong môi trường hộp cát (sandbox) hạn chế đặc quyền tài nguyên, kết hợp cùng các tầng lọc và xác thực định dạng tham số đầu vào nghiêm ngặt trước khi chuyển tiếp đến tầng thực thi lõi.
 
 \section{Các công nghệ và thư viện phát triển chính}
+Nghiên cứu tiến hành lựa chọn và tích hợp các giải pháp công nghệ có tính ổn định cao, nhằm xây dựng một hệ thống tác nhân tối ưu về mặt tài nguyên nhưng vẫn đảm bảo khả năng mở rộng kiến trúc trong thực tế:
+
 \subsection{Node.js và TypeScript}
-Nền tảng thực thi ứng dụng ổn định và có kiểu dữ liệu chặt chẽ hỗ trợ lập trình hướng đối tượng.
+Môi trường Node.js cung cấp cơ chế thực thi JavaScript bất đồng bộ hướng sự kiện (event-driven, không chặn I/O), phù hợp cho việc xử lý luồng dữ liệu tương tác theo thời gian thực. Bổ trợ cho nền tảng này, ngôn ngữ TypeScript thiết lập một hệ thống kiểm tra kiểu tĩnh (static typing) nghiêm ngặt. Việc áp dụng TypeScript giúp giảm thiểu các sai lệch phân rã cấu trúc dữ liệu phức tạp của tác nhân tại thời điểm biên dịch, đồng thời tối ưu hóa tính mô-đun hóa, nâng cao khả năng bảo trì và phát triển mã nguồn dài hạn.
+
 \subsection{Grammy — Thư viện Telegram Bot}
-Thư viện giúp tương tác nhanh và hiệu quả với Telegram Bot API.
-\subsection{LangGraph — Orchestration Engine}
-Động cơ chính giúp kiểm soát vòng lặp trạng thái của tác nhân dưới dạng đồ thị có hướng.
-\subsection{Ollama và các nhà cung cấp LLM}
-Hỗ trợ tích hợp đa dạng các dòng mô hình ngôn ngữ lớn thương mại và cục bộ.
+Grammy là thư viện tương thích với cấu trúc Telegram Bot API, được tối ưu hóa về mặt hiệu năng xử lý luồng dữ liệu bất đồng bộ trong môi trường Node.js. Thư viện này hỗ trợ kiến trúc phân tầng mã trung gian (middleware), cho phép hệ thống triển khai các bộ lọc thông điệp đầu vào một cách có chọn lọc, điều phối vòng đời phiên trò chuyện và chuẩn hóa định dạng hiển thị giao diện phía người dùng cuối.
+
+\subsection{LangGraph — Công cụ điều phối đồ thị trạng thái}
+LangGraph đóng vai trò là khung điều phối (orchestration engine) luồng xử lý của tác nhân dựa trên mô hình đồ thị trạng thái tuần hoàn (cyclic state graph). Giải pháp này cho phép nhà phát triển kiểm soát chi tiết tiến trình suy luận đa bước, quản lý các tác vụ thực thi công cụ đồng thời, và duy trì các điểm kiểm soát trạng thái (checkpointer). Nhờ đó, hệ thống cấu thành khả năng phục hồi trạng thái vận hành (fault tolerance) khi đối mặt với các kịch bản gián đoạn dữ liệu hoặc ngoại lệ hệ thống.
+
+\subsection{Ollama và các nhà cung cấp LLM ngoại vi}
+Công cụ Ollama được áp dụng để phục vụ việc triển khai cục bộ (self-hosted) các mô hình ngôn ngữ lớn mã nguồn mở thế hệ mới (như LLaMA hoặc Qwen) trên hạ tầng phần cứng giới hạn, hỗ trợ kiểm soát tính toàn vẹn và bảo mật dữ liệu nội bộ. Song song đó, kiến trúc hệ thống cũng thiết kế khả năng chuyển đổi linh hoạt (fallback mechanism) sang các giao diện lập trình ứng dụng (API) đám mây thương mại nhằm đáp ứng các tác vụ yêu cầu năng lực suy luận chuyên sâu và phức tạp hơn.
+
+\begin{figure}[H]
+  \centering
+  \begin{tikzpicture}[
+    node distance=1.1cm,
+    layer/.style={rectangle, draw, fill=blue!5, rounded corners=2pt, minimum width=8.5cm, minimum height=0.8cm, align=center, font=\small},
+    title/.style={font=\bfseries\small}
+  ]
+    % Định nghĩa các tầng công nghệ trong hệ thống
+    \node (ui) [layer, fill=teal!10] {\textbf{Tầng giao tiếp:} Telegram API và thư viện Grammy};
+    \node (logic) [layer, below=0.4cm of ui, fill=blue!5] {\textbf{Tầng điều phối:} đồ thị trạng thái LangGraph};
+    \node (engine) [layer, below=0.4cm of logic, fill=orange!5] {\textbf{Tầng suy luận và công cụ:} bộ khung công cụ, Ollama (LLaMA, Qwen) và các API đám mây};
+    \node (base) [layer, below=0.4cm of engine, fill=gray!10] {\textbf{Nền tảng thực thi:} môi trường Node.js và lõi TypeScript};
+
+    % Vẽ các mũi tên tương tác hai chiều giữa các tầng
+    \draw [thick,<->,>=stealth] (ui) -- (logic);
+    \draw [thick,<->,>=stealth] (logic) -- (engine);
+    \draw [thick,<->,>=stealth] (engine) -- (base);
+  \end{tikzpicture}
+  \caption{Sơ đồ phân tầng cấu trúc tích hợp công nghệ trong hệ thống tác nhân}
+  \label{fig:technology-stack}
+\end{figure}
