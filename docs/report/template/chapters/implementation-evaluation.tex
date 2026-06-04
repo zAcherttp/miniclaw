@@ -1,0 +1,67 @@
+\chapter{Cài đặt và kiểm thử}
+\label{chap:implementation-evaluation}
+
+\section{Môi trường cài đặt và cấu hình hệ thống}
+Hệ thống được phát triển và kiểm thử trên môi trường sử dụng Node.js v20+, TypeScript v5.4, chạy trên máy chủ cá nhân cục bộ. Các cấu hình khóa bảo mật và đường dẫn được quản lý tách biệt qua tệp biến môi trường \texttt{.env}.
+
+\section{Chi tiết cài đặt các thành phần chính}
+\subsection{Agent Execution Engine (LangGraph routing)}
+Sử dụng thư viện LangGraph để định hình đồ thị trạng thái Agent, thực thi các liên kết và chuyển đổi ngữ cảnh hội thoại linh hoạt.
+\subsection{Context Engineering Pipeline \& Scheduler Daemon}
+Tích hợp hàng đợi bất đồng bộ của MessageBus để quản lý tin nhắn và triển khai TaskScheduler chạy nền điều phối hẹn giờ sự kiện nhắc nhở.
+\subsection{Dynamic Skill System (SKILL.md loader)}
+Triển khai bộ phân tích cú pháp tệp markdown để tự động phân tích cấu trúc kỹ năng, nạp vào bộ nhớ ngữ cảnh của tác nhân khi kích hoạt.
+\subsection{Security Boundary (resolveSecurePath, whitelist model)}
+Hiện thực hóa các thuật toán chuẩn hóa đường dẫn và kiểm tra danh sách trắng các câu lệnh hệ thống được phép chạy.
+
+\section{Kịch bản kiểm thử và phân tích kết quả}
+\subsection{Kết quả kiểm thử nhóm A: Quản lý lịch trình và công việc hàng ngày}
+Đo lường khả năng trợ lý ảo hỗ trợ người dùng lập lịch, tạo nhắc nhở, theo dõi tiến độ và quản lý công việc hàng ngày thông qua ngôn ngữ tự nhiên. Nhóm kiểm thử này phản ánh trực tiếp mục tiêu cốt lõi của đề tài.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Biểu đồ kết quả kiểm thử quản lý lịch trình và công việc hàng ngày.}
+  \label{fig:evaluation-schedule-accuracy}
+\end{figure}
+
+\subsection{Kết quả kiểm thử nhóm B: Độ chính xác gọi công cụ qua ngôn ngữ tự nhiên}
+Đánh giá khả năng tác nhân chọn đúng công cụ phù hợp từ tập hợp các công cụ tích hợp khi nhận yêu cầu bằng ngôn ngữ tự nhiên của người dùng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Biểu đồ kết quả kiểm thử độ chính xác gọi công cụ.}
+  \label{fig:evaluation-toolcall-accuracy}
+\end{figure}
+
+\subsection{Kết quả kiểm thử nhóm C: Nén và duy trì ngữ cảnh}
+Đánh giá mức độ lưu trữ thông tin cốt lõi sau nhiều lần kích hoạt dọn dẹp và nén lịch sử trò chuyện.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Biểu đồ so sánh lượng token trước và sau khi compaction.}
+  \label{fig:evaluation-compaction}
+\end{figure}
+
+\subsection{Kết quả kiểm thử nhóm D: Chất lượng tổng hợp kỹ năng}
+Đánh giá mức độ chính xác khi tác nhân trích xuất quy trình hội thoại lặp lại để ghi nhận thành tệp kỹ năng nháp.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp minh họa tệp SKILL.md được trích xuất tự động.}
+  \label{fig:evaluation-skill-md}
+\end{figure}
+
+\subsection{Kết quả kiểm thử nhóm E: Ranh giới an toàn bảo mật}
+Kiểm thử các trường hợp truy cập tệp tin ngoài thư mục cho phép hoặc chạy các lệnh độc hại, đảm bảo hệ thống phản hồi từ chối an toàn.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện cảnh báo truy cập tệp ngoài ranh giới.}
+  \label{fig:evaluation-security-boundary}
+\end{figure}
+

@@ -1,0 +1,60 @@
+\chapter{Sơ đồ màn hình và tương tác (UI/UX Design)}
+\label{chap:ui-ux}
+
+\section{Yêu cầu thiết kế giao diện (Telegram Bot và Command Line Interface)}
+Giao diện của Miniclaw được chia làm hai khu vực:
+\begin{itemize}
+  \item Giao diện hội thoại qua Telegram: Là kênh tương tác chính của người dùng thường nhật, yêu cầu hiển thị ngắn gọn, thân thiện, và tích hợp các nút bấm phản hồi nhanh.
+  \item Giao diện dòng lệnh (CLI): Phục vụ cấu hình, onboarding và khởi tạo hệ thống cho nhà phát triển.
+\end{itemize}
+
+\section{Sơ đồ luồng màn hình / Luồng tương tác (Screen Flow / Interaction Flow)}
+Mô tả cách thức người dùng chuyển dịch giữa các ngữ cảnh hội thoại khác nhau từ giao diện cấu hình ban đầu đến các chế độ chat thường nhật và đàm thoại nén/duyệt lưu kỹ năng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ luồng màn hình và tương tác người dùng.}
+  \label{fig:screen-interaction-flow}
+\end{figure}
+
+\section{Chi tiết các kịch bản tương tác người dùng}
+\subsection{Giao diện khởi động và cấu hình ban đầu (Onboarding CLI)}
+Ảnh chụp màn hình thể hiện kịch bản khởi chạy onboarding thông qua lệnh \texttt{pnpm dev init} trong terminal.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện chạy lệnh pnpm dev init.}
+  \label{fig:screenshot-cli-init}
+\end{figure}
+
+\subsection{Giao diện hội thoại Telegram thường nhật}
+Minh họa kịch bản trò chuyện thường nhật, yêu cầu trợ lý ảo lên lịch nhắc nhở hoặc tra cứu thông tin qua Telegram Bot.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện trò chuyện thường nhật.}
+  \label{fig:screenshot-telegram-chat}
+\end{figure}
+
+\subsection{Giao diện tổng hợp và phê duyệt kỹ năng}
+Kịch bản tương tác khi hệ thống kích hoạt đề xuất nén tóm tắt và hiển thị khung chọn kèm nút phản hồi đồng ý/hủy/sửa đổi kỹ năng mới.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện đề xuất nén và lưu kỹ năng.}
+  \label{fig:screenshot-consolidation-prompt}
+\end{figure}
+
+\subsection{Giao diện cảnh báo ranh giới bảo mật}
+Kịch bản bot Telegram gửi tin nhắn cảnh báo từ chối thực thi khi phát hiện lệnh nằm ngoài whitelist hoặc đường dẫn tệp tin vi phạm an toàn ranh giới.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện cảnh báo vi phạm bảo mật.}
+  \label{fig:screenshot-security-alert}
+\end{figure}

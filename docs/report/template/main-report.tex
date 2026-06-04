@@ -1,6 +1,6 @@
 \documentclass{uitcourseproject}
 
-\usepackage[backend=biber,style=ieee,sorting=none]{biblatex}
+\usepackage[backend=biber,style=ieee,sorting=none,language=english]{biblatex}
 \addbibresource{bibliography/main.bib}
 
 \input{config/project-info}
@@ -9,6 +9,13 @@
 \begin{document}
 
 \makecoverpage
+
+\input{chapters/acknowledgement}
+\clearpage
+
+\input{chapters/advisor-comments}
+\clearpage
+
 \setupmainmatter
 
 \tableofcontents
@@ -17,11 +24,14 @@
 \clearpage
 \listoftables
 \clearpage
+\input{chapters/abbreviations}
+\clearpage
 
-\input{chapters/summary}
 \input{chapters/introduction}
-\input{chapters/chapter-1}
-\input{chapters/chapter-2}
+\input{chapters/theory}
+\input{chapters/overview-system}
+\input{chapters/analysis-design}
+\input{chapters/implementation-evaluation}
 \input{chapters/conclusion}
 
 \printbibliography[heading=bibintoc, title={NGUỒN THAM KHẢO}]

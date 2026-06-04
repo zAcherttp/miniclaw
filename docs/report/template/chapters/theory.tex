@@ -1,0 +1,76 @@
+\chapter{Cơ sở lý thuyết}
+\label{chap:theory}
+
+\section{Tổng quan về mô hình ngôn ngữ lớn (LLM) và Prompt Engineering}
+Các mô hình ngôn ngữ lớn (Large Language Models - LLMs) đóng vai trò là hạt nhân xử lý thông tin và suy luận chính trong hệ thống. Kỹ nghệ prompt (Prompt Engineering) giúp định hình hành vi, phong cách hội thoại và cách thức LLM đưa ra các quyết định gọi công cụ (tool call).
+
+\section{Kiến trúc Agent và vòng lặp tác nhân (Agent Loop - ReAct)}
+Kiến trúc ReAct (Reasoning and Acting) cho phép tác nhân thông minh thực hiện đan xen giữa suy luận và hành động. Trợ lý ảo sẽ quan sát yêu cầu của người dùng, lập kế hoạch hành động, thực thi công cụ ngoại vi và tiếp tục quan sát kết quả để đưa ra câu trả lời cuối cùng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Vòng lặp Agent ReAct.}
+  \label{fig:agent-react-loop}
+\end{figure}
+
+\section{Quản lý bộ nhớ tác nhân (Agent Memory)}
+\subsection{Bộ nhớ ngắn hạn (Short-term chat history)}
+Quản lý lịch sử hội thoại tức thời, được truyền thẳng vào prompt của LLM để duy trì ngữ cảnh trò chuyện hiện tại.
+\subsection{Bộ nhớ dài hạn (Long-term vector Memory)}
+Lưu trữ các sự kiện, sở thích lâu dài của người dùng dưới dạng vector embedding, được truy vấn qua tìm kiếm tương đồng khi cần thiết.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Mô hình phân tầng bộ nhớ tác nhân.}
+  \label{fig:memory-hierarchy}
+\end{figure}
+
+\section{Kỹ nghệ ngữ cảnh (Context Engineering) và cơ chế tự động nén}
+Do giới hạn cửa sổ ngữ cảnh và chi phí token, cơ chế tự động nén ngữ cảnh (Context Compaction) sẽ tự động cô đọng các tin nhắn cũ thành các bản tóm tắt súc tích mà vẫn bảo toàn các sự kiện quan trọng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Quy trình nén và dọn dẹp ngữ cảnh.}
+  \label{fig:context-compaction}
+\end{figure}
+
+\section{Tổng hợp kỹ năng với sự tham gia của người dùng (Workflow Consolidation — HITL)}
+Quy trình Human-in-the-loop (HITL) được áp dụng khi hệ thống phát hiện các hành động lặp đi lặp lại của người dùng để đề xuất một quy trình hoạt động (Workflow) dưới dạng kỹ năng mới. Tác nhân thông minh sẽ tạo đàm thoại đề xuất và chỉ lưu chính thức tệp kỹ năng sau khi được con người duyệt qua.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Vòng lặp phản hồi Human-in-the-loop.}
+  \label{fig:hitl-feedback-loop}
+\end{figure}
+
+\section{Kỹ nghệ bộ công cụ tác nhân (Agent Tool Harness)}
+\label{sec:tool-harness}
+Trong kiến trúc tác nhân thông minh, nếu Context Engineering trả lời câu hỏi \emph{``Cho Agent biết gì?''} thì Tool Harness trả lời câu hỏi \emph{``Cho Agent làm gì?''}. Bộ công cụ tác nhân (Tool Harness) là tầng trung gian cho phép LLM tương tác với môi trường bên ngoài — từ truy xuất dữ liệu, quản lý lịch trình đến thao tác trên hệ thống tệp.
+
+\subsection{Khái niệm Tool Harness và vai trò trong vòng lặp Agent}
+Tool Harness là tập hợp các hàm được mô tả bằng lược đồ JSON (JSON Schema) và được đăng ký với LLM tại thời điểm chạy. Khi LLM quyết định cần thực hiện một hành động, nó sẽ phát ra một lời gọi công cụ (tool call) có cấu trúc, và hệ thống sẽ thực thi hàm tương ứng rồi trả kết quả ngược lại vào ngữ cảnh hội thoại.
+
+\subsection{Phân loại công cụ theo mức độ tác động}
+Các công cụ được phân thành ba nhóm theo mức độ tác động lên hệ thống:
+\begin{itemize}
+  \item \textbf{Chỉ đọc (read-only):} Truy vấn bộ nhớ, tìm kiếm kỹ năng — không gây thay đổi trạng thái.
+  \item \textbf{Ghi (write):} Tạo, cập nhật hoặc xóa dữ liệu nội bộ như nhắc nhở, ghi nhớ.
+  \item \textbf{Tác động phụ (side-effect):} Thực thi lệnh hệ thống, đọc/ghi tệp — cần kiểm soát ranh giới bảo mật.
+\end{itemize}
+
+\subsection{Cơ chế định nghĩa và đăng ký công cụ}
+Mỗi công cụ được khai báo dưới dạng một đối tượng gồm tên, mô tả ngữ nghĩa và JSON Schema cho tham số đầu vào. Cơ chế đăng ký tự động tại thời điểm khởi tạo Agent đảm bảo tính nhất quán giữa lược đồ công cụ và các hàm xử lý thực thi tương ứng.
+
+\section{Các công nghệ và thư viện phát triển chính}
+\subsection{Node.js và TypeScript}
+Nền tảng thực thi ứng dụng ổn định và có kiểu dữ liệu chặt chẽ hỗ trợ lập trình hướng đối tượng.
+\subsection{Grammy — Thư viện Telegram Bot}
+Thư viện giúp tương tác nhanh và hiệu quả với Telegram Bot API.
+\subsection{LangGraph — Orchestration Engine}
+Động cơ chính giúp kiểm soát vòng lặp trạng thái của tác nhân dưới dạng đồ thị có hướng.
+\subsection{Ollama và các nhà cung cấp LLM}
+Hỗ trợ tích hợp đa dạng các dòng mô hình ngôn ngữ lớn thương mại và cục bộ.

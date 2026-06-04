@@ -5,11 +5,18 @@
 \ProcessOptions\relax
 \LoadClass[11pt,a4paper,oneside]{report}
 
-\RequirePackage[utf8]{inputenc}
-\RequirePackage[T5]{fontenc}
-\RequirePackage[english,vietnamese]{babel}
-\renewcommand{\rmdefault}{ptm}
-\RequirePackage{newtxmath}
+\RequirePackage{fontspec}
+\RequirePackage{polyglossia}
+
+\setmainlanguage{vietnamese}
+\setotherlanguage{english}
+
+\setmainfont{Times New Roman}
+\setsansfont{Arial}
+\setmonofont{Consolas}
+
+\RequirePackage{unicode-math}
+\setmathfont{Latin Modern Math}
 \RequirePackage{geometry}
 \RequirePackage{graphicx}
 \RequirePackage{xcolor}
@@ -35,6 +42,7 @@
 \RequirePackage[unicode]{hyperref}
 \RequirePackage{bookmark}
 \RequirePackage{csquotes}
+\DeclareQuoteAlias{english}{vietnamese}
 \RequirePackage{etoolbox}
 
 \definecolor{uitblue}{HTML}{2F6BFF}
@@ -81,8 +89,8 @@
 \setlength{\parskip}{0pt}
 \setlength{\arrayrulewidth}{0.6pt}
 \renewcommand{\arraystretch}{1.15}
-\setlist[itemize]{leftmargin=2em}
-\setlist[enumerate]{leftmargin=2em}
+\setlist[itemize]{leftmargin=2em, topsep=6pt plus 2pt minus 2pt, itemsep=6pt plus 2pt minus 2pt, parsep=0pt}
+\setlist[enumerate]{leftmargin=2em, topsep=6pt plus 2pt minus 2pt, itemsep=6pt plus 2pt minus 2pt, parsep=0pt}
 
 \hypersetup{
   colorlinks=true,
@@ -100,33 +108,35 @@
   singlelinecheck=false
 }
 
-\addto\captionsvietnamese{%
+\gappto\captionsvietnamese{%
   \renewcommand{\contentsname}{MỤC LỤC}%
   \renewcommand{\listfigurename}{DANH SÁCH HÌNH}%
   \renewcommand{\listtablename}{DANH SÁCH BẢNG}%
 }
-\addto\captionsenglish{%
+\gappto\captionsenglish{%
   \renewcommand{\contentsname}{MỤC LỤC}%
   \renewcommand{\listfigurename}{DANH SÁCH HÌNH}%
   \renewcommand{\listtablename}{DANH SÁCH BẢNG}%
 }
+\renewcommand{\thechapter}{\Roman{chapter}}
 \renewcommand{\cftdotsep}{1.5}
 \renewcommand{\cftchapleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsecleader}{\cftdotfill{\cftdotsep}}
 \renewcommand{\cftsubsecleader}{\cftdotfill{\cftdotsep}}
-\renewcommand{\cftchapaftersnum}{.}
+\renewcommand{\cftchappresnum}{CHƯƠNG }
+\renewcommand{\cftchapaftersnum}{:}
 \renewcommand{\cftsecaftersnum}{.}
 \renewcommand{\cftsubsecaftersnum}{.}
-\setlength{\cftchapnumwidth}{1.4em}
-\setlength{\cftsecnumwidth}{1.4em}
-\setlength{\cftsubsecnumwidth}{2.7em}
+\setlength{\cftchapnumwidth}{6.8em}
+\setlength{\cftsecnumwidth}{2.2em}
+\setlength{\cftsubsecnumwidth}{3.0em}
 
 \setcounter{secnumdepth}{3}
 \setcounter{tocdepth}{2}
 \counterwithout{figure}{chapter}
 \counterwithout{table}{chapter}
 
-\renewcommand{\thesection}{\arabic{section}}
+\renewcommand{\thesection}{\arabic{chapter}.\arabic{section}}
 \renewcommand{\thesubsection}{\thesection.\arabic{subsection}}
 \renewcommand{\thesubsubsection}{\thesubsection.\arabic{subsubsection}}
 
@@ -148,12 +158,12 @@
   {0.5em}
   {}
 \titleformat{\subsection}
-  {\normalfont\bfseries\fontsize{15pt}{18pt}\selectfont}
+  {\normalfont\bfseries\fontsize{14pt}{17pt}\selectfont}
   {\thesubsection.}
   {0.5em}
   {}
 \titleformat{\subsubsection}
-  {\normalfont\bfseries\fontsize{15pt}{18pt}\selectfont}
+  {\normalfont\bfseries\fontsize{13pt}{16pt}\selectfont}
   {\thesubsubsection.}
   {0.5em}
   {}
@@ -196,6 +206,13 @@
 \newcommand{\coverlogo}[1]{\renewcommand{\@coverlogo}{#1}}
 \newcommand{\@reportmembers}{Sinh viên A & 22520001 & Trưởng nhóm \\}
 \newcommand{\reportmembers}[1]{\renewcommand{\@reportmembers}{#1}}
+\AtBeginDocument{%
+  \let\cite\supercite
+  \AtEveryBibitem{%
+    \clearname{author}%
+    \clearname{editor}%
+  }
+}
 
 \newcommand{\makecoverpage}{%
   \begin{titlepage}
@@ -243,7 +260,7 @@
       \vspace{0.35cm}
       \noindent\textbf{Giảng viên hướng dẫn:} \@supervisor\par
       \vspace{0.35cm}
-      \noindent\textbf{Thực hiện bởi nhóm:}\par
+      \noindent\textbf{Sinh viên thực hiện:}\par
       \vspace{0.15cm}
       \hspace*{1.2em}%
       \begin{tabularx}{0.92\textwidth}{@{}Y l Y@{}}
@@ -268,7 +285,6 @@
   \pagestyle{fancy}
   \fancyhf{}
   \fancyhead[L]{\color{black!80}Báo cáo Đồ án \@coursename}
-  \fancyhead[R]{\color{black!80}Nhóm \@groupnumber}
   \fancyfoot[C]{\color{black!80}\thepage}
 }
 

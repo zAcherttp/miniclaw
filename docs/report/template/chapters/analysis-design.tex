@@ -1,0 +1,182 @@
+\chapter{Phân tích và thiết kế hệ thống}
+\label{chap:analysis-design}
+
+\section{Sơ đồ Use Case}
+\subsection{Giới thiệu sơ đồ Use Case}
+Sơ đồ Use Case mô tả các mối quan hệ tương tác giữa các tác nhân bên ngoài và các chức năng cốt lõi của hệ thống trợ lý ảo Miniclaw.
+
+\subsection{Các tác nhân trong hệ thống}
+Hệ thống xác định hai tác nhân chính:
+\begin{itemize}
+  \item \textbf{User (Telegram User):} Thực hiện trò chuyện, tạo nhắc nhở và phản hồi duyệt lưu quy trình.
+  \item \textbf{Admin (CLI/Developer):} Khởi tạo hệ thống, thiết lập file biến môi trường và quản lý các kỹ năng trực tiếp.
+\end{itemize}
+
+\subsection{Các Use Case chính}
+Các ca sử dụng chính được phân nhóm theo quản trị hệ thống, tương tác thường nhật và quản lý kỹ năng/lịch biểu.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ Use Case tổng thể hệ thống.}
+  \label{fig:use-case-diagram}
+\end{figure}
+
+\subsection{Đặc tả ca sử dụng chi tiết (Use Case Specification)}
+Trình bày chi tiết luồng xử lý chính và ngoại lệ cho các ca sử dụng như xác thực truy cập qua allow-list, quản lý nhắc nhở và đàm thoại nén duyệt lưu quy trình.
+
+\section{Sơ đồ hoạt động (Activity Diagram)}
+\subsection{Luồng xử lý tin nhắn \& Vòng lặp Agent chính (Main Agent Loop)}
+Mô tả các bước đi tuần tự của một tin nhắn từ lúc đi vào hệ thống cho tới khi LLM xử lý ra quyết định và phản hồi.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ hoạt động Vòng lặp Agent chính.}
+  \label{fig:activity-main-loop}
+\end{figure}
+
+\subsection{Luồng đàm thoại nén \& duyệt quy trình (Workflow Consolidation - HITL)}
+Biểu diễn luồng nghiệp vụ đàm thoại đề xuất lưu tệp kỹ năng \texttt{SKILL.md} mới sau khi phát hiện hành vi lặp lại.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ hoạt động đàm thoại nén \& duyệt quy trình.}
+  \label{fig:activity-consolidation}
+\end{figure}
+
+\subsection{Luồng nhắc nhở chạy ngầm (Scheduler Daemon)}
+Mô tả cách thức \texttt{TaskScheduler} quét tệp lưu trữ và kích hoạt thông báo gửi về Telegram của người dùng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ hoạt động của TaskScheduler.}
+  \label{fig:activity-scheduler}
+\end{figure}
+
+\section{Sơ đồ trình tự (Sequence Diagram)}
+\subsection{Trình tự quy trình Xử lý yêu cầu Chat \& Lưu bộ nhớ dài hạn}
+Thể hiện tương tác thời gian giữa Telegram Channel, MessageBus, AgentLoop và MemoryManager.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ trình tự xử lý Chat và Bộ nhớ dài hạn.}
+  \label{fig:sequence-chat-memory}
+\end{figure}
+
+\subsection{Trình tự quy trình đàm thoại nén và duyệt quy trình (Workflow Consolidation)}
+Mô tả tương tác giữa các lớp điều khiển khi tiến hành ghi tệp kỹ năng mới và cắt tỉa lịch sử hội thoại.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ trình tự đàm thoại nén và duyệt quy trình.}
+  \label{fig:sequence-consolidation}
+\end{figure}
+
+\section{Thiết kế sơ đồ thực thể - quan hệ (ERD) và Class Diagram}
+\subsection{Sơ đồ thực thể - quan hệ logic (Logical ERD)}
+Thiết kế các mối quan hệ thực thể logic lưu trữ cấu trúc dữ liệu phẳng dưới dạng JSON.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ Thực thể - Quan hệ logic.}
+  \label{fig:logical-erd}
+\end{figure}
+
+\subsection{Sơ đồ lớp các thành phần chính (Class Diagram)}
+Cấu trúc lớp chính và các phương thức giao tiếp của hệ thống mã nguồn TypeScript.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ lớp chi tiết của hệ thống.}
+  \label{fig:class-diagram}
+\end{figure}
+
+\section{Kiến trúc tổng quan hệ thống}
+\subsection{Sơ đồ kiến trúc phân lớp tổng thể (Layered Architecture)}
+Mô tả kiến trúc phân tầng 6 lớp đảm bảo tính cô lập và tính độc lập của từng cấu phần phần mềm.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ kiến trúc phân lớp hệ thống.}
+  \label{fig:layered-architecture}
+\end{figure}
+
+\subsection{Cơ chế phân vùng dữ liệu và xử lý đồng thời (State Isolation \& Concurrency)}
+Biểu diễn cơ chế phân tầng và tách biệt không gian checkpoint giúp hệ thống chạy đa người dùng an toàn.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Mô hình quản lý concurrency và isolation.}
+  \label{fig:concurrency-isolation}
+\end{figure}
+
+\section{Thiết kế giao diện và kịch bản tương tác}
+\label{sec:ui-ux-design}
+
+\subsection{Yêu cầu thiết kế giao diện}
+Giao diện của Miniclaw được chia làm hai khu vực:
+\begin{itemize}
+  \item Giao diện hội thoại qua Telegram: Là kênh tương tác chính của người dùng thường nhật, yêu cầu hiển thị ngắn gọn, thân thiện, và tích hợp các nút bấm phản hồi nhanh.
+  \item Giao diện dòng lệnh (CLI): Phục vụ cấu hình, onboarding và khởi tạo hệ thống cho nhà phát triển.
+\end{itemize}
+
+\subsection{Sơ đồ luồng màn hình và tương tác}
+Mô tả cách thức người dùng chuyển dịch giữa các ngữ cảnh hội thoại khác nhau từ giao diện cấu hình ban đầu đến các chế độ chat thường nhật và đàm thoại nén/duyệt lưu kỹ năng.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ luồng màn hình và tương tác người dùng.}
+  \label{fig:screen-interaction-flow}
+\end{figure}
+
+\subsection{Chi tiết các kịch bản tương tác người dùng}
+\subsubsection{Giao diện khởi động và cấu hình ban đầu}
+Ảnh chụp màn hình thể hiện kịch bản khởi chạy onboarding thông qua lệnh \texttt{pnpm dev init} trong terminal.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện chạy lệnh pnpm dev init.}
+  \label{fig:screenshot-cli-init}
+\end{figure}
+
+\subsubsection{Giao diện hội thoại Telegram thường nhật}
+Minh họa kịch bản trò chuyện thường nhật, yêu cầu trợ lý ảo lên lịch nhắc nhở hoặc tra cứu thông tin qua Telegram Bot.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện trò chuyện thường nhật.}
+  \label{fig:screenshot-telegram-chat}
+\end{figure}
+
+\subsubsection{Giao diện tổng hợp và phê duyệt kỹ năng}
+Kịch bản tương tác khi hệ thống kích hoạt đề xuất nén tóm tắt và hiển thị khung chọn kèm nút phản hồi đồng ý/hủy/sửa đổi kỹ năng mới.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện đề xuất nén và lưu kỹ năng.}
+  \label{fig:screenshot-consolidation-prompt}
+\end{figure}
+
+\subsubsection{Giao diện cảnh báo ranh giới bảo mật}
+Kịch bản bot Telegram gửi tin nhắn cảnh báo từ chối thực thi khi phát hiện lệnh nằm ngoài whitelist hoặc đường dẫn tệp tin vi phạm an toàn ranh giới.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Ảnh chụp giao diện cảnh báo vi phạm bảo mật.}
+  \label{fig:screenshot-security-alert}
+\end{figure}
+

@@ -1,0 +1,47 @@
+\chapter{Tổng quan về hệ thống}
+\label{chap:overview-system}
+
+\section{Ý tưởng thiết kế hệ thống}
+Miniclaw được xây dựng như một trợ lý ảo cá nhân tự vận hành (self-hosted), hoạt động liên tục như một tiến trình chạy ẩn (daemon). Người dùng tương tác trực tiếp qua Telegram Bot để yêu cầu lập lịch trình, quản lý công việc hoặc trò chuyện, trong khi giao diện dòng lệnh (CLI) phục vụ việc cài đặt và quản lý hệ thống của nhà phát triển.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Tổng quan mô hình tương tác Miniclaw.}
+  \label{fig:miniclaw-interaction-model}
+\end{figure}
+
+\section{Các nguyên tắc thiết kế cốt lõi}
+\subsection{Xử lý bất đồng bộ và gộp tin nhắn (Message Coalescing)}
+Hệ thống sử dụng hàng đợi tin nhắn (MessageBus) để nhận và gửi tin nhắn không đồng bộ, giúp cô lập tiến trình chạy của Agent và giao diện chat Telegram. Cơ chế Message Coalescing gom cụm tin nhắn trong cửa sổ 250ms giúp giảm thiểu số lần gọi LLM không cần thiết khi người dùng gửi nhiều tin nhắn liên tiếp.
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.78\linewidth]{demo-fig.png}
+  \caption{Sơ đồ luồng Message Coalescing.}
+  \label{fig:message-coalescing-flow}
+\end{figure}
+
+\subsection{Tính bảo mật và ranh giới an toàn (Security Boundary)}
+Để đảm bảo an toàn khi chạy trên máy chủ cá nhân, Miniclaw áp dụng cơ chế xác thực ranh giới đường dẫn an toàn (Safe Path Validation) và whitelist cho các câu lệnh thực thi hệ thống ngoại vi.
+\subsection{Nạp kỹ năng động (Dynamic Skill Loading)}
+Hệ thống có khả năng tự động quét và nạp động các kỹ năng thông qua tệp cấu hình dạng markdown (\texttt{SKILL.md}), giúp mở rộng năng lực của trợ lý mà không cần khởi động lại mã nguồn chính.
+
+\section{Vòng lặp hoạt động chính của hệ thống}
+\subsection{Vòng lặp trò chuyện \& Thực thi lệnh thông thường}
+Vòng lặp cơ bản xử lý yêu cầu chat, tra cứu bộ nhớ và thực thi các công cụ chỉnh sửa lịch trình khi có yêu cầu từ người dùng.
+\subsection{Vòng lặp lập lịch nhắc nhở nền (Scheduler Daemon)}
+Tiến trình quét liên tục CSDL nhiệm vụ và kích hoạt bộ đếm thời gian để chủ động gửi thông báo nhắc nhở lên kênh chat Telegram.
+\subsection{Vòng lặp tổng hợp ngữ cảnh và kỹ năng (Consolidation Loop)}
+Tiến trình phân tích lịch sử, trích xuất mẫu quy trình và tương tác với người dùng để lưu thêm kỹ năng mới.
+
+\section{Hệ thống công cụ của tác nhân (Agent Tool System)}
+\label{sec:agent-tool-system}
+Bộ công cụ là ``cánh tay'' thực thi của trợ lý ảo, cho phép tác nhân chuyển từ phân tích ngôn ngữ tự nhiên sang hành động cụ thể trên hệ thống. Miniclaw tích hợp một tập hợp các công cụ chuyên biệt phục vụ các nhóm chức năng chính.
+
+\subsection{Danh sách các công cụ tích hợp}
+Hệ thống cung cấp các công cụ thuộc nhiều nhóm chức năng: quản lý lịch trình và nhắc nhở, ghi nhận và truy xuất bộ nhớ dài hạn, tìm kiếm và thực thi kỹ năng, đọc ghi tệp tin và thực thi lệnh hệ thống. Mỗi công cụ được khai báo với tên, mô tả ngữ nghĩa và lược đồ tham số JSON Schema để LLM có thể tự phát sinh lời gọi chính xác.
+
+\subsection{Cơ chế phân quyền và kiểm soát tác động phụ}
+Mỗi lời gọi công cụ được phân loại theo mức độ tác động (chỉ đọc, ghi, tác động phụ) và phải qua tầng kiểm tra ranh giới an toàn trước khi thực thi. Cơ chế này đảm bảo các thao tác ghi hoặc thực thi lệnh hệ thống luôn nằm trong phạm vi được phép.
+

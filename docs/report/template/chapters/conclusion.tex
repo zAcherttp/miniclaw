@@ -1,11 +1,28 @@
 \chapter{Kết luận}
+\label{chap:conclusion}
 
-Phần kết luận nên gồm ba ý ngắn gọn:
+\section{Tổng kết đồ án}
+Đồ án "Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hàng ngày" đã hoàn thành việc nghiên cứu, thiết kế và cài đặt thực tế một hệ thống trợ lý ảo cá nhân thông minh hoạt động ổn định trên môi trường tự vận hành.
 
-\begin{enumerate}
-  \item Đồ án đã giải quyết được gì.
-  \item Những giới hạn còn tồn tại.
-  \item Hướng phát triển tiếp theo nếu có.
-\end{enumerate}
+\section{Kết quả đạt được}
+Hệ thống Miniclaw đã đạt được các kết quả nổi bật bao gồm:
+\begin{itemize}
+  \item Triển khai thành công tác nhân thông minh ReAct Agent có thể lập lịch trình và gọi các công cụ ngoại vi chính xác.
+  \item Xây dựng cơ chế nén ngữ cảnh tự động hiệu quả giúp tiết kiệm token đáng kể trong khi vẫn bảo toàn thông tin cần nhớ.
+  \item Hiện thực hóa quy trình học kỹ năng động (Workflow Consolidation) kết hợp duyệt từ con người (HITL).
+  \item Đảm bảo ranh giới bảo mật vững chắc chống lại các hành vi xâm nhập trái phép vào máy chủ cục bộ.
+\end{itemize}
 
-Nếu giảng viên đánh giá cao tính phản biện, nên viết thật rõ những điểm chưa làm được thay vì chỉ tổng kết thành công.
+\section{Khó khăn và hạn chế còn tồn tại}
+Mặc dù đạt được mục tiêu đề ra, hệ thống vẫn đối mặt với một số khó khăn:
+\begin{itemize}
+  \item Sự phụ thuộc vào kết nối mạng bên ngoài và độ trễ của các dịch vụ LLM thương mại.
+  \item Việc trích xuất quy trình trong đàm thoại nén đôi lúc còn chịu ảnh hưởng bởi hiện tượng ảo giác (hallucination) của mô hình.
+\end{itemize}
+
+\section{Định hướng phát triển tương lai}
+Trong tương lai, đồ án hướng tới các cải tiến sau:
+\begin{itemize}
+  \item Tích hợp thêm các bộ kết nối lịch trình khác như CalDAV, Outlook, và hỗ trợ các mô hình ngôn ngữ lớn cục bộ nhẹ hơn để tối ưu chi phí và tăng tính riêng tư.
+  \item Nâng cao thuật toán trích xuất quy trình tự động giúp tăng độ chính xác trong các tình huống hội thoại phức tạp.
+\end{itemize}
