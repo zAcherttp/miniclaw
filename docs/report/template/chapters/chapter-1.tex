@@ -1,0 +1,35 @@
+\chapter{Phân tích và thiết kế}
+\label{chap:analysis-design}
+
+\section{Yêu cầu chức năng}
+
+Phần này nên liệt kê những chức năng hoặc nghiệp vụ chính mà sản phẩm cần đáp ứng.
+Nếu hệ thống có nhiều vai trò, nên tách yêu cầu theo từng nhóm người dùng.
+
+\section{Yêu cầu phi chức năng}
+
+Những yêu cầu như hiệu năng, bảo mật, khả năng mở rộng, khả dụng và bảo trì thường nên đặt ở đây.
+Nếu giảng viên yêu cầu tiêu chí cụ thể, nên đưa về dạng bảng để dễ đối chiếu.
+
+\begin{table}[H]
+  \centering
+  \begin{tabularx}{0.92\linewidth}{|>{\bfseries}l|Y|}
+    \hline
+    Tiêu chí & Mô tả \\
+    \hline
+    Hiệu năng & Thời gian phản hồi mong muốn, số người dùng đồng thời, giới hạn tài nguyên. \\
+    \hline
+    Bảo mật & Xác thực, phân quyền, bảo vệ dữ liệu nhạy cảm, nhật ký hệ thống. \\
+    \hline
+    Vận hành & Cách triển khai, sao lưu, giám sát, và xử lý sự cố. \\
+    \hline
+  \end{tabularx}
+  \caption{Mẫu bảng mô tả yêu cầu phi chức năng.}
+  \label{tab:non-functional}
+\end{table}
+
+\section{Thiết kế giải pháp}
+
+Từ bảng \ref{tab:non-functional}, nhóm có thể trình bày kiến trúc tổng thể, thành phần chính,
+cơ sở dữ liệu, API, hay luồng xử lý. Nếu cần trích dẫn tài liệu kỹ thuật, có thể sử dụng
+\verb|\cite{lamport1994latex}| như ví dụ \cite{lamport1994latex}.

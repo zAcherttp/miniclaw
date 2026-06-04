@@ -1,0 +1,44 @@
+\chapter{Hiện thực và đánh giá}
+\label{chap:implementation}
+
+\section{Các bước triển khai}
+
+Đây là nơi phù hợp để mô tả nhóm đã hiện thực đề tài như thế nào: khởi tạo môi trường,
+chia module, cấu hình hạ tầng, và kết nối giữa các thành phần.
+
+\begin{lstlisting}[language=Python, caption={Ví dụ đoạn mã minh họa cách chèn code.}, label={lst:demo}]
+from fastapi import FastAPI
+
+app = FastAPI()
+
+@app.get("/health")
+def healthcheck():
+    return {"status": "ok"}
+\end{lstlisting}
+
+Listing \ref{lst:demo} cho thấy template đã sẵn sàng cho việc chèn code có caption và label.
+
+\section{Kết quả và đánh giá}
+
+Cần nêu rõ nhóm đánh giá bằng cách nào: testcase, user testing, benchmark, hay so sánh với yêu cầu ban đầu.
+Nếu có biểu đồ, ảnh chụp giao diện, hoặc bảng số liệu, chèn vào đây để tăng độ thuyết phục.
+
+\begin{table}[H]
+  \centering
+  \begin{tabular}{|>{\bfseries}l|c|c|}
+    \hline
+    Tiêu chí & Mục tiêu & Kết quả \\
+    \hline
+    Tỷ lệ testcase đạt & 90\% & 96\% \\
+    \hline
+    Thời gian phản hồi trung bình & < 500 ms & 320 ms \\
+    \hline
+    Tỷ lệ hoàn thành backlog & 100\% & 92\% \\
+    \hline
+  \end{tabular}
+  \caption{Mẫu bảng tổng hợp kết quả đánh giá.}
+  \label{tab:evaluation}
+\end{table}
+
+Bảng \ref{tab:evaluation} là chỗ đặt sẵn để thay bằng số liệu thật của đồ án.
+Nếu cần thêm phần trích dẫn tài liệu tham khảo, có thể dùng \cite{mittelbach2004latexcompanion}.
