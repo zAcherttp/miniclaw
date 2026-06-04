@@ -34,7 +34,7 @@
 \RequirePackage{float}
 \RequirePackage{pdflscape}
 \RequirePackage{chngcntr}
-\RequirePackage{titlesec}
+\RequirePackage[indentafter]{titlesec}
 \RequirePackage{tocloft}
 \RequirePackage{caption}
 \RequirePackage{subcaption}
@@ -48,7 +48,7 @@
 \definecolor{uitblue}{HTML}{2F6BFF}
 \definecolor{uitborder}{HTML}{2451C0}
 \newcolumntype{Y}{>{\raggedright\arraybackslash}X}
-\usetikzlibrary{calc}
+\usetikzlibrary{calc, shapes.geometric, arrows.meta, positioning}
 
 \geometry{
   a4paper,
@@ -212,6 +212,9 @@
     \clearname{author}%
     \clearname{editor}%
   }
+  \setlength{\parindent}{1.27cm}
+  \let\@afterindentfalse\@afterindenttrue
+  \@afterindenttrue
 }
 
 \newcommand{\makecoverpage}{%

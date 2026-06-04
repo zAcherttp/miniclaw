@@ -1,6 +1,13 @@
 \documentclass{uitcourseproject}
 
 \usepackage[backend=biber,style=ieee,sorting=none,language=english]{biblatex}
+\usepackage{iftex}
+\usepackage{microtype}
+\ifXeTeX
+  \microtypesetup{protrusion=true,factor=1100}
+\else
+  \microtypesetup{activate={true,nocompatibility},final,tracking=true,kerning=true,spacing=true,factor=1100,stretch=10,shrink=10}
+\fi
 \addbibresource{bibliography/main.bib}
 
 \input{config/project-info}

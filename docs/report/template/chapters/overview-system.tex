@@ -24,16 +24,16 @@ Hệ thống sử dụng hàng đợi tin nhắn (MessageBus) để nhận và g
 
 \subsection{Tính bảo mật và ranh giới an toàn (Security Boundary)}
 Để đảm bảo an toàn khi chạy trên máy chủ cá nhân, Miniclaw áp dụng cơ chế xác thực ranh giới đường dẫn an toàn (Safe Path Validation) và whitelist cho các câu lệnh thực thi hệ thống ngoại vi.
-\subsection{Nạp kỹ năng động (Dynamic Skill Loading)}
-Hệ thống có khả năng tự động quét và nạp động các kỹ năng thông qua tệp cấu hình dạng markdown (\texttt{SKILL.md}), giúp mở rộng năng lực của trợ lý mà không cần khởi động lại mã nguồn chính.
+\subsection{Nạp quy trình làm việc động (Dynamic Workflow Loading)}
+Hệ thống có khả năng tự động quét và nạp động các quy trình làm việc thông qua tệp cấu hình dạng markdown (\texttt{SKILL.md}), giúp mở rộng năng lực của trợ lý mà không cần khởi động lại mã nguồn chính.
 
 \section{Vòng lặp hoạt động chính của hệ thống}
 \subsection{Vòng lặp trò chuyện \& Thực thi lệnh thông thường}
 Vòng lặp cơ bản xử lý yêu cầu chat, tra cứu bộ nhớ và thực thi các công cụ chỉnh sửa lịch trình khi có yêu cầu từ người dùng.
 \subsection{Vòng lặp lập lịch nhắc nhở nền (Scheduler Daemon)}
 Tiến trình quét liên tục CSDL nhiệm vụ và kích hoạt bộ đếm thời gian để chủ động gửi thông báo nhắc nhở lên kênh chat Telegram.
-\subsection{Vòng lặp tổng hợp ngữ cảnh và kỹ năng (Consolidation Loop)}
-Tiến trình phân tích lịch sử, trích xuất mẫu quy trình và tương tác với người dùng để lưu thêm kỹ năng mới.
+\subsection{Vòng lặp trích xuất quy trình làm việc (Extraction Loop)}
+Tiến trình phân tích lịch sử, trích xuất mẫu quy trình và tương tác với người dùng để lưu thêm quy trình mới.
 
 \section{Hệ thống công cụ của tác nhân (Agent Tool System)}
 \label{sec:agent-tool-system}

@@ -21,4 +21,8 @@
 *.synctex.gz
 *.toc
 *.xdv
+*.luabridge.lua
+*.markdown.in
+*.synctex(busy)
+*.bbl-SAVE-ERROR
 _minted-*

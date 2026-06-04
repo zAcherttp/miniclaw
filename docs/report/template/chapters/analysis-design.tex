@@ -36,14 +36,14 @@ Mô tả các bước đi tuần tự của một tin nhắn từ lúc đi vào 
   \label{fig:activity-main-loop}
 \end{figure}
 
-\subsection{Luồng đàm thoại nén \& duyệt quy trình (Workflow Consolidation - HITL)}
-Biểu diễn luồng nghiệp vụ đàm thoại đề xuất lưu tệp kỹ năng \texttt{SKILL.md} mới sau khi phát hiện hành vi lặp lại.
+\subsection{Luồng trích xuất \& duyệt quy trình (Reusable Workflow Extraction - HITL)}
+Biểu diễn luồng nghiệp vụ trích xuất quy trình và lưu tệp \texttt{SKILL.md} mới sau khi phát hiện hành vi lặp lại.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ hoạt động đàm thoại nén \& duyệt quy trình.}
-  \label{fig:activity-consolidation}
+  \caption{Sơ đồ hoạt động trích xuất \& duyệt quy trình.}
+  \label{fig:activity-extraction}
 \end{figure}
 
 \subsection{Luồng nhắc nhở chạy ngầm (Scheduler Daemon)}
@@ -67,14 +67,14 @@ Thể hiện tương tác thời gian giữa Telegram Channel, MessageBus, Agent
   \label{fig:sequence-chat-memory}
 \end{figure}
 
-\subsection{Trình tự quy trình đàm thoại nén và duyệt quy trình (Workflow Consolidation)}
-Mô tả tương tác giữa các lớp điều khiển khi tiến hành ghi tệp kỹ năng mới và cắt tỉa lịch sử hội thoại.
+\subsection{Trình tự quy trình trích xuất và duyệt quy trình (Reusable Workflow Extraction)}
+Mô tả tương tác giữa các lớp điều khiển khi tiến hành ghi tệp quy trình mới và cắt tỉa lịch sử hội thoại.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ trình tự đàm thoại nén và duyệt quy trình.}
-  \label{fig:sequence-consolidation}
+  \caption{Sơ đồ trình tự trích xuất và duyệt quy trình.}
+  \label{fig:sequence-extraction}
 \end{figure}
 
 \section{Thiết kế sơ đồ thực thể - quan hệ (ERD) và Class Diagram}
@@ -160,14 +160,14 @@ Minh họa kịch bản trò chuyện thường nhật, yêu cầu trợ lý ả
   \label{fig:screenshot-telegram-chat}
 \end{figure}
 
-\subsubsection{Giao diện tổng hợp và phê duyệt kỹ năng}
-Kịch bản tương tác khi hệ thống kích hoạt đề xuất nén tóm tắt và hiển thị khung chọn kèm nút phản hồi đồng ý/hủy/sửa đổi kỹ năng mới.
+\subsubsection{Giao diện trích xuất và phê duyệt quy trình}
+Kịch bản tương tác khi hệ thống kích hoạt đề xuất trích xuất và hiển thị khung chọn kèm nút phản hồi đồng ý/hủy/sửa đổi quy trình làm việc mới.
 
 \begin{figure}[H]
   \centering
   \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Ảnh chụp giao diện đề xuất nén và lưu kỹ năng.}
-  \label{fig:screenshot-consolidation-prompt}
+  \caption{Ảnh chụp giao diện đề xuất trích xuất và lưu quy trình.}
+  \label{fig:screenshot-extraction-prompt}
 \end{figure}
 
 \subsubsection{Giao diện cảnh báo ranh giới bảo mật}

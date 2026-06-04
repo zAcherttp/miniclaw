@@ -35,7 +35,7 @@ CHƯƠNG I: TỔNG QUAN
     1.2.1 Xây dựng trợ lý ảo cá nhân tự động hóa công việc
     1.2.2 Tích hợp tác nhân AI và thiết kế bộ công cụ tác nhân (Tool Harness)
     1.2.3 Nghiên cứu Context Engineering và cơ chế nén ngữ cảnh tự động
-    1.2.4 Triển khai quy trình tổng hợp và lưu kỹ năng (Workflow Consolidation)
+    1.2.4 Triển khai trích xuất và lưu trữ quy trình làm việc tái sử dụng được (Reusable Workflow Extraction)
     1.2.5 Rèn luyện tư duy hệ thống và kỹ năng giải quyết vấn đề thực tiễn
   1.3 Đối tượng và phạm vi nghiên cứu
     1.3.1 Đối tượng nghiên cứu (Tác nhân thông minh, Context Engineering, Tool Harness, Task Scheduling)
@@ -56,7 +56,7 @@ CHƯƠNG II: CƠ SỞ LÝ THUYẾT
     [figure: Mô hình phân tầng bộ nhớ tác nhân (Sơ đồ so sánh đặc tính và không gian lưu trữ của bộ nhớ ngắn hạn trong ngữ cảnh hội thoại và bộ nhớ dài hạn trong vector database)]
   2.4 Kỹ nghệ ngữ cảnh (Context Engineering) và cơ chế tự động nén
     [figure: Quy trình nén và dọn dẹp ngữ cảnh (Sơ đồ mô tả lịch sử tin nhắn dài bị nén thành bản tóm tắt cô đọng thông qua LLM trước khi đẩy lại vào ngữ cảnh)]
-  2.5 Tổng hợp kỹ năng với sự tham gia của người dùng (Workflow Consolidation — HITL)
+  2.5 Trích xuất và lưu trữ quy trình làm việc tái sử dụng được (Reusable Workflow Extraction — HITL)
     [figure: Vòng lặp phản hồi Human-in-the-loop (Sơ đồ tương tác giữa LLM đề xuất quy trình và con người duyệt/sửa đổi trước khi lưu trữ)]
   2.6 Kỹ nghệ bộ công cụ tác nhân (Agent Tool Harness)
     2.6.1 Khái niệm Tool Harness và vai trò trong vòng lặp Agent
@@ -79,7 +79,7 @@ CHƯƠNG III: TỔNG QUAN VỀ HỆ THỐNG
   3.3 Vòng lặp hoạt động chính của hệ thống
     3.3.1 Vòng lặp trò chuyện & Thực thi lệnh thông thường
     3.3.2 Vòng lặp lập lịch nhắc nhở nền (Scheduler Daemon)
-    3.3.3 Vòng lặp tổng hợp ngữ cảnh và kỹ năng (Consolidation Loop)
+    3.3.3 Vòng lặp trích xuất quy trình làm việc (Extraction Loop)
   3.4 Hệ thống công cụ của tác nhân (Agent Tool System)
     3.4.1 Danh sách các công cụ tích hợp
     3.4.2 Cơ chế phân quyền và kiểm soát tác động phụ
@@ -98,15 +98,15 @@ CHƯƠNG IV: PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG
   4.2 Sơ đồ hoạt động
     4.2.1 Luồng xử lý tin nhắn và vòng lặp tác nhân chính
       [figure: Sơ đồ hoạt động Vòng lặp Agent chính (Sơ đồ Activity UML mô tả chi tiết các bước từ khi nhận tin nhắn, phân tích, gọi tool, cho đến khi gửi phản hồi)]
-    4.2.2 Luồng đàm thoại nén và duyệt quy trình
-      [figure: Sơ đồ hoạt động đàm thoại nén và duyệt quy trình (Sơ đồ Activity UML thể hiện quy trình đề xuất kỹ năng, đàm thoại chỉnh sửa và lưu trữ tệp SKILL.md)]
+    4.2.2 Luồng trích xuất và duyệt quy trình
+      [figure: Sơ đồ hoạt động trích xuất và duyệt quy trình (Sơ đồ Activity UML thể hiện quy trình đề xuất quy trình làm việc, đàm thoại chỉnh sửa và lưu trữ tệp SKILL.md)]
     4.2.3 Luồng nhắc nhở chạy ngầm
       [figure: Sơ đồ hoạt động của TaskScheduler (Sơ đồ Activity UML mô tả quá trình quét reminders.json, thiết lập hẹn giờ và gửi nhắc nhở khi đến hạn)]
   4.3 Sơ đồ trình tự
     4.3.1 Trình tự quy trình xử lý trò chuyện và lưu bộ nhớ dài hạn
       [figure: Sơ đồ trình tự xử lý Chat và Bộ nhớ dài hạn (Sơ đồ Sequence UML thể hiện tương tác thời gian giữa User, Channel, MessageBus, AgentLoop, LangGraph và MemoryManager)]
-    4.3.2 Trình tự quy trình đàm thoại nén và duyệt quy trình
-      [figure: Sơ đồ trình tự đàm thoại nén và duyệt quy trình (Sơ đồ Sequence UML thể hiện các bước tương tác đồng bộ dữ liệu giữa các class khi lưu kỹ năng)]
+    4.3.2 Trình tự quy trình trích xuất và duyệt quy trình
+      [figure: Sơ đồ trình tự trích xuất và duyệt quy trình (Sơ đồ Sequence UML thể hiện các bước tương tác đồng bộ dữ liệu giữa các class khi lưu quy trình)]
   4.4 Thiết kế sơ đồ thực thể - quan hệ và sơ đồ lớp
     4.4.1 Sơ đồ thực thể - quan hệ logic
       4.4.1.1 Thực thể hồ sơ người dùng
@@ -130,8 +130,8 @@ CHƯƠNG IV: PHÂN TÍCH VÀ THIẾT KẾ HỆ THỐNG
         [figure: Ảnh chụp giao diện chạy lệnh pnpm dev init (Ảnh chụp màn hình terminal hướng dẫn cài đặt biến môi trường)]
       4.6.3.2 Giao diện hội thoại Telegram thường nhật
         [figure: Ảnh chụp giao diện trò chuyện thường nhật (Ảnh chụp màn hình hội thoại giữa User và Bot Telegram trên điện thoại/máy tính)]
-      4.6.3.3 Giao diện tổng hợp và phê duyệt kỹ năng
-        [figure: Ảnh chụp giao diện đề xuất nén và lưu kỹ năng (Ảnh chụp màn hình hiển thị đề xuất markdown SKILL.md kèm các nút bấm xác nhận/chỉnh sửa)]
+      4.6.3.3 Giao diện trích xuất và phê duyệt quy trình
+        [figure: Ảnh chụp giao diện đề xuất trích xuất và lưu quy trình (Ảnh chụp màn hình hiển thị đề xuất markdown SKILL.md kèm các nút bấm xác nhận/chỉnh sửa)]
       4.6.3.4 Giao diện cảnh báo ranh giới bảo mật
         [figure: Ảnh chụp giao diện cảnh báo vi phạm bảo mật (Ảnh chụp màn hình bot từ chối truy cập file ngoài ranh giới hoặc chạy lệnh nằm ngoài whitelist)]
 
@@ -145,7 +145,7 @@ CHƯƠNG V: CÀI ĐẶT VÀ KIỂM THỬ
       [figure: Biểu đồ kết quả kiểm thử độ chính xác gọi công cụ (Biểu đồ cột thể hiện tỷ lệ chọn đúng công cụ từ tập hợp các công cụ tích hợp)]
     5.3.3 Kết quả kiểm thử nhóm C: Nén và duy trì ngữ cảnh
       [figure: Biểu đồ so sánh lượng token trước và sau khi compaction (Biểu đồ đường thể hiện lượng token tiết kiệm được qua các chuỗi hội thoại dài)]
-    5.3.4 Kết quả kiểm thử nhóm D: Chất lượng tổng hợp kỹ năng
+    5.3.4 Kết quả kiểm thử nhóm D: Chất lượng trích xuất quy trình làm việc
     5.3.5 Kết quả kiểm thử nhóm E: Ranh giới an toàn bảo mật
 
 CHƯƠNG VI: KẾT LUẬN
