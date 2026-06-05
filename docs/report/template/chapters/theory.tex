@@ -286,19 +286,27 @@ Các công cụ tích hợp trong hệ thống được phân lớp chặt chẽ
 Nhằm đảm bảo tính an toàn trong quá trình thực thi và kiểm soát các rủi ro từ việc tiêm nhiễm chỉ dẫn (prompt injection) dẫn đến việc kích hoạt các câu lệnh hệ điều hành ngoài ý muốn, Tool Harness thiết lập một cơ chế cô lập nghiêm ngặt. Hệ thống vận hành các tác vụ có nguy cơ cao trong môi trường hộp cát (sandbox) hạn chế đặc quyền tài nguyên, kết hợp cùng các tầng lọc và xác thực định dạng tham số đầu vào nghiêm ngặt trước khi chuyển tiếp đến tầng thực thi lõi.
 
 \section{Các công nghệ và thư viện phát triển chính}
-Nghiên cứu tiến hành lựa chọn và tích hợp các giải pháp công nghệ có tính ổn định cao, nhằm xây dựng một hệ thống tác nhân tối ưu về mặt tài nguyên nhưng vẫn đảm bảo khả năng mở rộng kiến trúc trong thực tế:
+Để xây dựng một hệ thống tác nhân (agent) tối ưu về mặt tài nguyên trên hạ tầng sẵn có, đồng thời đảm bảo khả năng mở rộng kiến trúc khi triển khai thực tế, đề tài tiến hành lựa chọn và tích hợp các giải pháp công nghệ cốt lõi sau đây:
 
 \subsection{Node.js và TypeScript}
-Môi trường Node.js cung cấp cơ chế thực thi JavaScript bất đồng bộ hướng sự kiện (event-driven, không chặn I/O), phù hợp cho việc xử lý luồng dữ liệu tương tác theo thời gian thực. Bổ trợ cho nền tảng này, ngôn ngữ TypeScript thiết lập một hệ thống kiểm tra kiểu tĩnh (static typing) nghiêm ngặt. Việc áp dụng TypeScript giúp giảm thiểu các sai lệch phân rã cấu trúc dữ liệu phức tạp của tác nhân tại thời điểm biên dịch, đồng thời tối ưu hóa tính mô-đun hóa, nâng cao khả năng bảo trì và phát triển mã nguồn dài hạn.
+Nền tảng backend của hệ thống sử dụng môi trường Node.js nhờ cơ chế thực thi bất đồng bộ và hướng sự kiện (event-driven, non-blocking I/O). Đặc điểm này giúp tối ưu hóa việc xử lý các luồng dữ liệu tương tác và phản hồi theo thời gian thực của chatbot.
+
+Nhằm quản lý mã nguồn chặt chẽ, ngôn ngữ TypeScript được áp dụng để thiết lập hệ thống kiểm tra kiểu tĩnh (static typing) nghiêm ngặt. Việc này giúp phát hiện và ngăn chặn sớm các lỗi sai sót về cấu trúc dữ liệu ngay trong quá trình phát triển (compile-time), tránh các lỗi runtime bất ngờ, đồng thời tăng tính mô-đun hóa để hệ thống dễ dàng bảo trì về lâu dài.
 
 \subsection{Grammy — Thư viện Telegram Bot}
-Grammy là thư viện tương thích với cấu trúc Telegram Bot API, được tối ưu hóa về mặt hiệu năng xử lý luồng dữ liệu bất đồng bộ trong môi trường Node.js. Thư viện này hỗ trợ kiến trúc phân tầng mã trung gian (middleware), cho phép hệ thống triển khai các bộ lọc thông điệp đầu vào một cách có chọn lọc, điều phối vòng đời phiên trò chuyện và chuẩn hóa định dạng hiển thị giao diện phía người dùng cuối.
+Đối với kênh tương tác với người dùng, Grammy được lựa chọn làm thư viện giao tiếp chính với Telegram Bot API. Thư viện này đạt hiệu năng xử lý bất đồng bộ cao trong môi trường Node.js và hỗ trợ hoàn hảo cho TypeScript. Với kiến trúc phân tầng mã trung gian (middleware) mạnh mẽ, Grammy giúp hệ thống dễ dàng triển khai các bộ lọc thông điệp đầu vào, quản lý chặt chẽ vòng đời phiên trò chuyện (session) của người dùng và định dạng hiển thị giao diện phía client một cách linh hoạt.
 
 \subsection{LangGraph — Công cụ điều phối đồ thị trạng thái}
-LangGraph đóng vai trò là khung điều phối (orchestration engine) luồng xử lý của tác nhân dựa trên mô hình đồ thị trạng thái tuần hoàn (cyclic state graph). Giải pháp này cho phép nhà phát triển kiểm soát chi tiết tiến trình suy luận đa bước, quản lý các tác vụ thực thi công cụ đồng thời, và duy trì các điểm kiểm soát trạng thái (checkpointer). Nhờ đó, hệ thống cấu thành khả năng phục hồi trạng thái vận hành (fault tolerance) khi đối mặt với các kịch bản gián đoạn dữ liệu hoặc ngoại lệ hệ thống.
+Để giải quyết bài toán quản lý logic và luồng suy luận đa bước của Agent, đề tài áp dụng LangGraph làm khung điều phối (orchestration engine) dựa trên mô hình đồ thị trạng thái (state graph). Giải pháp này giúp kiểm soát chi tiết tiến trình suy luận (reasoning), điều hướng linh hoạt giữa các trạng thái và xử lý các tác vụ gọi công cụ (tool calling) đồng thời.
+
+Đặc biệt, tính năng duy trì điểm kiểm soát (checkpointer) của LangGraph mang lại cho hệ thống khả năng tự phục hồi trạng thái vận hành mượt mà (fault tolerance) khi đối mặt với các kịch bản gián đoạn dữ liệu hoặc ngoại lệ hệ thống.
 
 \subsection{Ollama và các nhà cung cấp LLM ngoại vi}
-Công cụ Ollama được áp dụng để phục vụ việc triển khai cục bộ (self-hosted) các mô hình ngôn ngữ lớn mã nguồn mở thế hệ mới (như LLaMA hoặc Qwen) trên hạ tầng phần cứng giới hạn, hỗ trợ kiểm soát tính toàn vẹn và bảo mật dữ liệu nội bộ. Song song đó, kiến trúc hệ thống cũng thiết kế khả năng chuyển đổi linh hoạt (fallback mechanism) sang các giao diện lập trình ứng dụng (API) đám mây thương mại nhằm đáp ứng các tác vụ yêu cầu năng lực suy luận chuyên sâu và phức tạp hơn.
+Về tầng mô hình ngôn ngữ lớn (LLM), hệ thống kết hợp linh hoạt giữa giải pháp cục bộ và đám mây nhằm tối ưu hóa giữa hiệu năng, chi phí và tính bảo mật:
+\begin{itemize}
+    \item \textbf{Ollama:} Được sử dụng để triển khai cục bộ (self-hosted) các mô hình mã nguồn mở thế hệ mới (như LLaMA hoặc Qwen) ngay trên hạ tầng phần cứng giới hạn. Giải pháp này giúp kiểm soát hoàn toàn tính bảo mật, quyền riêng tư của dữ liệu nội bộ và đảm bảo hệ thống vận hành độc lập.
+    \item \textbf{Các API đám mây thương mại:} Song song đó, một cơ chế chuyển đổi dự phòng (fallback mechanism) được thiết kế sẵn. Khi đối mặt với các tác vụ phức tạp yêu cầu năng lực suy luận chuyên sâu mà mô hình local chưa đáp ứng tốt, hệ thống sẽ tự động chuyển hướng gọi các API ngoại vi mạnh hơn để đảm bảo chất lượng phản hồi cho người dùng.
+\end{itemize}
 
 \begin{figure}[H]
   \centering
