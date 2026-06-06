@@ -2,11 +2,7 @@
 \label{chap:overview}
 
 \section{Lý do chọn đề tài}
-Các mô hình ngôn ngữ lớn (LLM) hiện nay sở hữu năng lực hiểu ý định và thực thi tác vụ phức tạp thông qua hệ thống công cụ bổ trợ. Tuy nhiên, hầu hết các hệ thống trợ lý ảo phổ biến như Google Calendar hay Microsoft To-Do vẫn yêu cầu người dùng thực hiện nhiều thao tác nhập liệu và quản lý thủ công. Đồng thời, việc truyền gửi thông tin liên tục lên các máy chủ đám mây làm gia tăng nguy cơ rò rỉ dữ liệu cá nhân của người dùng. Để giải quyết các hạn chế này, các kiến trúc tác nhân AI tối giản (minimal AI agents) vận hành cục bộ (local-first) như OpenClaw hay Nanobot đang trở thành xu hướng nghiên cứu chính nhờ khả năng bảo mật dữ liệu vượt trội.
-
-Kế thừa thiết kế từ các hệ thống tác nhân tối giản này, đề tài tập trung xây dựng MiniClaw — một trợ lý ảo cá nhân chạy nền (daemon) ưu tiên cục bộ (local-first) nhằm tự động hóa quản lý lịch trình và công việc hằng ngày. Hệ thống tập trung phát triển theo hai định hướng kỹ thuật cốt lõi. Thứ nhất, hệ thống xây dựng cơ chế bộ nhớ dài hạn giúp duy trì và khai thác động cơ ngữ cảnh cá nhân bền vững qua các phiên làm việc kéo dài. Thứ hai, hệ thống mở rộng từ mô hình phản hồi theo yêu cầu đơn lẻ sang mô hình chủ động (proactive), hỗ trợ theo dõi, nhắc nhở và tự động điều phối lịch trình theo thời gian thực.
-
-Đề tài \textbf{``Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày''} tập trung hiện thực hóa các giải pháp kỹ thuật trên thông qua tác nhân thông minh MiniClaw.
+Trong kỷ nguyên số hóa mạnh mẽ với nhịp sống hiện đại ngày nay, việc quản lý thời gian, lịch trình và công việc hằng ngày đã trở thành một thách thức lớn đối với mỗi cá nhân khi khối lượng thông tin và tác vụ cần xử lý ngày càng phức tạp. Các giải pháp quản lý hiện nay phần lớn vẫn hoạt động một cách độc lập và thụ động. Người dùng thường phải tự thao tác thủ công để đồng bộ lịch trình giữa các nền tảng khác nhau (như Google Workspace hay Lark Suite), trong khi hệ thống chỉ đóng vai trò lưu trữ tĩnh. Thực tế này mở ra nhu cầu sử dụng trợ lý ảo có khả năng tự động hóa các thao tác trên, tương tác với người dùng thông qua ngôn ngữ tự nhiên. Song song với đó, sự bùng nổ của các Mô hình Ngôn ngữ Lớn (Large Language Models - LLM) đã mở ra một chương mới cho ngành công nghệ phần mềm. Điều này dẫn đến sự xuất hiện của các tác nhân trí tuệ nhân tạo (AI Agents) với khả năng lập luận logic mạnh mẽ, hiểu sâu ngữ cảnh và linh hoạt sử dụng công cụ để thực thi tác vụ. Sự phát triển đột phá này chính là lời giải cho bài toán quản lý hiệu quả nêu trên. Xuất phát từ thực tiễn công nghệ và nhu cầu cấp thiết đó, đề tài “Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày” được lựa chọn thực hiện, nhằm mục tiêu hiện thực hóa một tác nhân cá nhân thông minh, chủ động và tối ưu hóa trải nghiệm quản lý công việc của người dùng.
 
 \section{Mục tiêu đề tài}
 
@@ -104,6 +100,3 @@ Báo cáo đồ án được cấu trúc thành 6 chương chính thể hiện t
   \item \textbf{Chương V: Cài đặt và kiểm thử}: Mô tả môi trường phát triển, cài đặt các thành phần chính và phân tích kết quả kiểm thử qua 5 nhóm kịch bản.
   \item \textbf{Chương VI: Kết luận}: Tổng kết kết quả đạt được, các hạn chế còn tồn tại và định hướng phát triển trong tương lai.
 \end{itemize}
-
-Nhìn chung, Chương I đã trình bày các vấn đề tổng quan về tính cấp thiết, mục tiêu phát triển và phạm vi tiếp cận của đề tài MiniClaw. Các nền tảng lý thuyết và công nghệ cốt lõi phục vụ cho việc giải quyết các bài toán này sẽ được đi sâu phân tích trong chương tiếp theo.
-
