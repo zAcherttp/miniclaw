@@ -143,6 +143,10 @@ export class MessageBus {
 		return this.outbound.pop();
 	}
 
+	tryConsumeOutbound(): OutboundMessage | undefined {
+		return this.outbound.tryPop();
+	}
+
 	private batchKeyForInbound(msg: InboundMessage): string {
 		return `${msg.channel}:${msg.chat_id}:${msg.sender_id}`;
 	}

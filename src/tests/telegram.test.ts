@@ -104,6 +104,12 @@ describe("Telegram Channel Integration & Recovery", () => {
 		bot.botInfo = makeBotConfig();
 		vi.spyOn(bot, "start").mockImplementation(async () => {});
 		vi.spyOn(bot, "stop").mockImplementation(async () => {});
+
+		// Install a default mock API interceptor to prevent any real network requests
+		bot.api.config.use(async (prev, method, payload, signal) => {
+			return { ok: true, result: {} };
+		});
+
 		return { channel, bot };
 	}
 
@@ -314,6 +320,57 @@ describe("Telegram Channel Integration & Recovery", () => {
 		// Verify stream buffer is cleared from StateManager
 		const streamsAfter = await StateManager.getTelegramStreams();
 		expect(streamsAfter).toHaveLength(0);
+
+		await channel.stop();
+	});
+
+	it("should stream reasoning deltas with drafts and conclude the stream as an HTML expandable blockquote", async () => {
+		const { channel, bot } = setupChannel(["*"]);
+		const apiCalls: { method: string; payload: Record<string, unknown> }[] = [];
+
+		bot.api.config.use((async (
+			_prev: unknown,
+			method: string,
+			payload: unknown,
+		) => {
+			const payloadRecord = payload as Record<string, unknown>;
+			apiCalls.push({ method, payload: payloadRecord });
+			if (method === "sendMessage") {
+				return {
+					ok: true,
+					result: {
+						message_id: 1002,
+						chat: {
+							id: payloadRecord.chat_id,
+							type: "private",
+						},
+						date: Math.floor(Date.now() / 1000),
+						text: payloadRecord.text,
+					},
+				};
+			}
+			return { ok: true, result: {} };
+		}) as unknown as Parameters<Bot["api"]["config"]["use"]>[0]);
+
+		await channel.start();
+
+		// Stream reasoning delta
+		await channel.sendReasoningDelta("12345", "Thinking about this topic...");
+
+		// Verify draft is created with custom header
+		expect(apiCalls.some((c) => c.method === "sendMessageDraft")).toBe(true);
+		const draftCall = apiCalls.find((c) => c.method === "sendMessageDraft");
+		expect(draftCall?.payload.text).toBe("🧠 Thinking:\nThinking about this topic...");
+
+		// Conclude reasoning stream
+		apiCalls.length = 0;
+		await channel.sendReasoningEnd("12345");
+
+		// Verify final reasoning message is sent in HTML mode
+		expect(apiCalls.some((c) => c.method === "sendMessage")).toBe(true);
+		const sendCall = apiCalls.find((c) => c.method === "sendMessage");
+		expect(sendCall?.payload.text).toBe("🧠 <b>Thinking:</b>\n<blockquote expandable>\nThinking about this topic...\n</blockquote>");
+		expect(sendCall?.payload.parse_mode).toBe("HTML");
 
 		await channel.stop();
 	});

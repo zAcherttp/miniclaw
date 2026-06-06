@@ -22,7 +22,7 @@ import { SkillsManager } from "./skills";
 import { StateManager } from "./state";
 import { FileCheckpointSaver } from "./store";
 import { getSystemInfoBlock } from "./systemInfo";
-import { estimateMessagesTokens } from "./tokenizer";
+import { applyReasoningBudget, estimateMessagesTokens } from "./tokenizer";
 
 interface ToolBoundRunnable {
 	// biome-ignore lint/suspicious/noExplicitAny: stream yields message chunks asynchronously
@@ -194,7 +194,7 @@ async function agentNode(
 
 	const activeMessages = [
 		new SystemMessage(systemPrompt),
-		...messages.filter((m) => m.type !== "system"),
+		...applyReasoningBudget(messages.filter((m) => m.type !== "system")),
 	];
 
 	if (!isToolBindingModel(model)) {

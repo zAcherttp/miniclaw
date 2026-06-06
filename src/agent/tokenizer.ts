@@ -196,3 +196,114 @@ function extractToolCalls(message: BaseMessage): unknown[] | null {
 export function formatTokens(count: number): string {
 	return count.toLocaleString("en-US");
 }
+
+function estimateReasoningTokens(message: BaseMessage): number {
+	let text = "";
+	if (
+		message.additional_kwargs &&
+		typeof message.additional_kwargs === "object"
+	) {
+		const kwargs = message.additional_kwargs as Record<string, unknown>;
+		if (typeof kwargs.reasoning_content === "string") {
+			text += kwargs.reasoning_content;
+		}
+		if (typeof kwargs.reasoning === "string") {
+			text += kwargs.reasoning;
+		}
+	}
+
+	if (Array.isArray(message.content)) {
+		for (const block of message.content) {
+			if (typeof block === "object" && block !== null) {
+				const b = block as Record<string, unknown>;
+				if (b.type === "reasoning") {
+					text += String(b.reasoning || b.text || "");
+				}
+			}
+		}
+	}
+
+	const contentBlocks = (message as any).contentBlocks;
+	if (Array.isArray(contentBlocks)) {
+		for (const block of contentBlocks) {
+			if (typeof block === "object" && block !== null) {
+				const b = block as Record<string, unknown>;
+				if (b.type === "reasoning") {
+					text += String(b.reasoning || b.text || "");
+				}
+			}
+		}
+	}
+
+	return text ? estimateTokens(text).tokens : 0;
+}
+
+function stripReasoning(message: BaseMessage): BaseMessage {
+	const cloned = new (message.constructor as any)({
+		content: Array.isArray(message.content) ? [...message.content] : message.content,
+		name: message.name,
+		id: message.id,
+		additional_kwargs: message.additional_kwargs ? { ...message.additional_kwargs } : {},
+		tool_calls: (message as any).tool_calls,
+		tool_call_id: (message as any).tool_call_id,
+	});
+
+	if (cloned.additional_kwargs) {
+		const kwargs = { ...cloned.additional_kwargs };
+		delete kwargs.reasoning_content;
+		delete kwargs.reasoning;
+		cloned.additional_kwargs = kwargs;
+	}
+
+	if (Array.isArray(cloned.content)) {
+		cloned.content = cloned.content.filter((block) => {
+			if (typeof block === "object" && block !== null) {
+				return (block as Record<string, unknown>).type !== "reasoning";
+			}
+			return true;
+		});
+	}
+
+	const contentBlocks = (message as any).contentBlocks;
+	if (Array.isArray(contentBlocks)) {
+		const filteredBlocks = contentBlocks.filter((block: any) => {
+			if (typeof block === "object" && block !== null) {
+				return (block as Record<string, unknown>).type !== "reasoning";
+			}
+			return true;
+		});
+		Object.defineProperty(cloned, "contentBlocks", {
+			value: filteredBlocks,
+			writable: true,
+			enumerable: true,
+			configurable: true,
+		});
+	}
+
+	return cloned;
+}
+
+const MAX_REASONING_TOKENS = 10000;
+
+export function applyReasoningBudget(messages: BaseMessage[]): BaseMessage[] {
+	let budget = MAX_REASONING_TOKENS;
+	const reasoningBudgetMap = new Map<number, boolean>(); // idx -> keep?
+
+	// Walk backwards - newest reasoning has highest priority
+	for (let i = messages.length - 1; i >= 0; i--) {
+		const tokens = estimateReasoningTokens(messages[i]);
+		if (tokens === 0) continue;
+
+		if (budget >= tokens) {
+			budget -= tokens;
+			reasoningBudgetMap.set(i, true);  // keep
+		} else {
+			reasoningBudgetMap.set(i, false); // prune
+		}
+	}
+
+	return messages.map((msg, idx) => {
+		const keep = reasoningBudgetMap.get(idx) ?? true;
+		return keep ? msg : stripReasoning(msg);
+	});
+}

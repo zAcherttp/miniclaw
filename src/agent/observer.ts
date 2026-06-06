@@ -21,15 +21,112 @@ interface ContentBlock {
 	text?: string;
 }
 
-function hasContentBlocks(
-	chunk: unknown,
-): chunk is { contentBlocks: ContentBlock[] } {
-	return (
-		typeof chunk === "object" &&
-		chunk !== null &&
-		"contentBlocks" in chunk &&
-		Array.isArray((chunk as { contentBlocks?: unknown }).contentBlocks)
-	);
+function getBlocks(messageChunk: unknown): ContentBlock[] | null {
+	if (typeof messageChunk === "object" && messageChunk !== null) {
+		if (
+			"contentBlocks" in messageChunk &&
+			Array.isArray((messageChunk as { contentBlocks?: unknown }).contentBlocks)
+		) {
+			return (messageChunk as { contentBlocks: ContentBlock[] }).contentBlocks;
+		}
+		if (
+			"content" in messageChunk &&
+			Array.isArray((messageChunk as { content?: unknown }).content)
+		) {
+			return (messageChunk as { content: ContentBlock[] }).content;
+		}
+	}
+	return null;
+}
+
+function getApiReasoningDelta(messageChunk: unknown): string {
+	if (typeof messageChunk !== "object" || messageChunk === null) {
+		return "";
+	}
+	const chunk = messageChunk as Record<string, unknown>;
+	if (typeof chunk.reasoning_content === "string") {
+		return chunk.reasoning_content;
+	}
+	const addKwargs = chunk.additional_kwargs;
+	if (addKwargs && typeof addKwargs === "object") {
+		const kwargs = addKwargs as Record<string, unknown>;
+		if (typeof kwargs.reasoning_content === "string") {
+			return kwargs.reasoning_content;
+		}
+		if (typeof kwargs.reasoning === "string") {
+			return kwargs.reasoning;
+		}
+	}
+	return "";
+}
+
+class IncrementalThinkExtractor {
+	private inThink = false;
+	private buffer = "";
+
+	extract(delta: string): { type: "reasoning" | "text"; content: string }[] {
+		this.buffer += delta;
+		const results: { type: "reasoning" | "text"; content: string }[] = [];
+
+		while (this.buffer.length > 0) {
+			if (!this.inThink) {
+				const thinkIdx = this.buffer.indexOf("<think>");
+				if (thinkIdx === -1) {
+					const possiblePrefixLen = this.getPossiblePrefixLength(this.buffer, "<think>");
+					const textLen = this.buffer.length - possiblePrefixLen;
+					if (textLen > 0) {
+						results.push({ type: "text", content: this.buffer.substring(0, textLen) });
+						this.buffer = this.buffer.substring(textLen);
+					}
+					break;
+				} else {
+					if (thinkIdx > 0) {
+						results.push({ type: "text", content: this.buffer.substring(0, thinkIdx) });
+					}
+					this.inThink = true;
+					this.buffer = this.buffer.substring(thinkIdx + 7);
+				}
+			} else {
+				const endThinkIdx = this.buffer.indexOf("</think>");
+				if (endThinkIdx === -1) {
+					const possiblePrefixLen = this.getPossiblePrefixLength(this.buffer, "</think>");
+					const reasoningLen = this.buffer.length - possiblePrefixLen;
+					if (reasoningLen > 0) {
+						results.push({ type: "reasoning", content: this.buffer.substring(0, reasoningLen) });
+						this.buffer = this.buffer.substring(reasoningLen);
+					}
+					break;
+				} else {
+					if (endThinkIdx > 0) {
+						results.push({ type: "reasoning", content: this.buffer.substring(0, endThinkIdx) });
+					}
+					this.inThink = false;
+					this.buffer = this.buffer.substring(endThinkIdx + 8);
+				}
+			}
+		}
+
+		return results;
+	}
+
+	flush(): { type: "reasoning" | "text"; content: string }[] {
+		if (!this.buffer) {
+			return [];
+		}
+		const type = this.inThink ? "reasoning" : "text";
+		const content = this.buffer;
+		this.buffer = "";
+		return [{ type, content }];
+	}
+
+	private getPossiblePrefixLength(str: string, target: string): number {
+		for (let len = Math.min(str.length, target.length - 1); len > 0; len--) {
+			if (target.startsWith(str.substring(str.length - len))) {
+				return len;
+			}
+		}
+		return 0;
+	}
 }
 
 /**
@@ -44,6 +141,7 @@ export class AgentEventObserver {
 	private readonly streamId: string;
 	private hasReasoned = false;
 	private reasoningClosed = false;
+	private readonly thinkExtractor = new IncrementalThinkExtractor();
 	public cachedSystemPrompt?: string;
 
 	constructor(
@@ -58,6 +156,49 @@ export class AgentEventObserver {
 		this.channel = channel;
 		this.replyTo = replyTo;
 		this.streamId = streamId || `agent-${Date.now()}`;
+	}
+
+	private async publishReasoningDelta(delta: string) {
+		this.hasReasoned = true;
+		await this.bus.publishOutbound({
+			channel: this.channel,
+			chat_id: this.chatId,
+			content: delta,
+			reply_to: this.replyTo,
+			metadata: {
+				_stream_id: this.streamId,
+				_reasoning_delta: true,
+				reply_to: this.replyTo,
+			},
+		});
+	}
+
+	private async publishTextDelta(delta: string) {
+		if (this.hasReasoned && !this.reasoningClosed) {
+			await this.bus.publishOutbound({
+				channel: this.channel,
+				chat_id: this.chatId,
+				content: "",
+				reply_to: this.replyTo,
+				metadata: {
+					_stream_id: this.streamId,
+					_reasoning_end: true,
+					reply_to: this.replyTo,
+				},
+			});
+			this.reasoningClosed = true;
+		}
+		await this.bus.publishOutbound({
+			channel: this.channel,
+			chat_id: this.chatId,
+			content: delta,
+			reply_to: this.replyTo,
+			metadata: {
+				_stream_id: this.streamId,
+				_stream_delta: true,
+				reply_to: this.replyTo,
+			},
+		});
 	}
 
 	/**
@@ -86,59 +227,32 @@ export class AgentEventObserver {
 				accumulated = messageChunk;
 			}
 
-			// 1. Unified contentBlocks parsing (standard LangChain recommended approach)
-			if (hasContentBlocks(messageChunk)) {
-				const contentBlocks = messageChunk.contentBlocks;
-				for (const block of contentBlocks) {
+			// 1. Check for structured blocks
+			const blocks = getBlocks(messageChunk);
+			if (blocks) {
+				for (const block of blocks) {
 					if (block.type === "reasoning") {
 						const rDelta = block.reasoning || block.text || "";
 						if (rDelta) {
-							this.hasReasoned = true;
-							await this.bus.publishOutbound({
-								channel: this.channel,
-								chat_id: this.chatId,
-								content: rDelta,
-								reply_to: this.replyTo,
-								metadata: {
-									_stream_id: this.streamId,
-									_reasoning_delta: true,
-									reply_to: this.replyTo,
-								},
-							});
+							await this.publishReasoningDelta(rDelta);
 						}
 					} else if (block.type === "text") {
 						const tDelta = block.text || "";
 						if (tDelta) {
-							if (this.hasReasoned && !this.reasoningClosed) {
-								await this.bus.publishOutbound({
-									channel: this.channel,
-									chat_id: this.chatId,
-									content: "",
-									reply_to: this.replyTo,
-									metadata: {
-										_stream_id: this.streamId,
-										_reasoning_end: true,
-										reply_to: this.replyTo,
-									},
-								});
-								this.reasoningClosed = true;
-							}
-							await this.bus.publishOutbound({
-								channel: this.channel,
-								chat_id: this.chatId,
-								content: tDelta,
-								reply_to: this.replyTo,
-								metadata: {
-									_stream_id: this.streamId,
-									_stream_delta: true,
-									reply_to: this.replyTo,
-								},
-							});
+							await this.publishTextDelta(tDelta);
 						}
 					}
 				}
 			} else {
-				// Fallback for standard models streaming plain text without contentBlocks
+				// 2. Fallback / Standard format (Ollama, Gemini, OpenAI, etc.)
+				
+				// A. Check for API-based reasoning first
+				const rDelta = getApiReasoningDelta(messageChunk);
+				if (rDelta) {
+					await this.publishReasoningDelta(rDelta);
+				}
+
+				// B. Check for text content
 				const chunkText =
 					typeof messageChunk === "object" &&
 					messageChunk !== null &&
@@ -146,19 +260,28 @@ export class AgentEventObserver {
 					typeof (messageChunk as { content: unknown }).content === "string"
 						? (messageChunk as { content: string }).content
 						: "";
+
 				if (chunkText) {
-					await this.bus.publishOutbound({
-						channel: this.channel,
-						chat_id: this.chatId,
-						content: chunkText,
-						reply_to: this.replyTo,
-						metadata: {
-							_stream_id: this.streamId,
-							_stream_delta: true,
-							reply_to: this.replyTo,
-						},
-					});
+					// Use IncrementalThinkExtractor to separate inline `<think>` tags from content
+					const segments = this.thinkExtractor.extract(chunkText);
+					for (const segment of segments) {
+						if (segment.type === "reasoning") {
+							await this.publishReasoningDelta(segment.content);
+						} else {
+							await this.publishTextDelta(segment.content);
+						}
+					}
 				}
+			}
+		}
+
+		// Flush any remaining buffered content from the think extractor
+		const remaining = this.thinkExtractor.flush();
+		for (const segment of remaining) {
+			if (segment.type === "reasoning") {
+				await this.publishReasoningDelta(segment.content);
+			} else {
+				await this.publishTextDelta(segment.content);
 			}
 		}
 

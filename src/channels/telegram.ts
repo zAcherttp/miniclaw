@@ -551,6 +551,8 @@ export class TelegramChannel extends Channel {
 		const streamId = metadata._stream_id;
 		const isToolStream =
 			typeof streamId === "string" && streamId.startsWith("tools-");
+		const isReasoningStream =
+			typeof streamId === "string" && streamId.startsWith("reasoning-");
 		const chatId = this.parseNumericChatId(chat_id);
 
 		if (isToolStream) {
@@ -609,7 +611,10 @@ export class TelegramChannel extends Channel {
 
 			const text = delta || "...";
 			const draftId = this.createDraftId();
-			await this.bot.api.sendMessageDraft(chatId, draftId, text);
+			const draftText = isReasoningStream
+				? `🧠 Thinking:\n${text}`
+				: text;
+			await this.bot.api.sendMessageDraft(chatId, draftId, draftText);
 			buf = {
 				text,
 				draft_id: draftId,
@@ -643,10 +648,13 @@ export class TelegramChannel extends Channel {
 
 		const now = Date.now();
 		if (streamEnd || now - buf.last_edit >= this.editIntervalMs) {
+			const draftText = isReasoningStream
+				? `🧠 Thinking:\n${buf.text}`
+				: buf.text;
 			await this.bot.api.sendMessageDraft(
 				chatId,
 				buf.draft_id,
-				buf.text || "...",
+				draftText || "...",
 			);
 			buf.last_edit = now;
 		}
@@ -685,10 +693,32 @@ export class TelegramChannel extends Channel {
 		});
 		const buf = this.streamBufs.get(key);
 		if (buf) {
-			buf.text += "\n\n";
-			const chatId = this.parseNumericChatId(chat_id);
-			await this.bot.api.sendMessageDraft(chatId, buf.draft_id, buf.text);
+			this.streamBufs.delete(key);
 			await this.saveStreamsToDisk();
+
+			const escapeHtml = (str: string) => {
+				return str
+					.replace(/&/g, "&amp;")
+					.replace(/</g, "&lt;")
+					.replace(/>/g, "&gt;");
+			};
+
+			const escapedText = escapeHtml(buf.text.trim());
+			const finalContent = `🧠 <b>Thinking:</b>\n<blockquote expandable>\n${escapedText}\n</blockquote>`;
+
+			try {
+				await this.send({
+					channel: this.name,
+					chat_id,
+					content: finalContent,
+					metadata: { parse_mode: "HTML" },
+				});
+			} catch (err) {
+				logger.error(
+					err,
+					`[Telegram] Failed to send reasoning message for chat ${chat_id}`,
+				);
+			}
 		}
 	}
 
@@ -752,9 +782,9 @@ export class TelegramChannel extends Channel {
 	private reasoningStreamId(metadata: MessageMetadata): string {
 		const streamId = metadata._stream_id;
 		if (typeof streamId === "string" && streamId.length > 0) {
-			return streamId;
+			return `reasoning-${streamId}`;
 		}
-		return "stream";
+		return "reasoning-stream";
 	}
 }
 
