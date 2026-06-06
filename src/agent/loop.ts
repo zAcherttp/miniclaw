@@ -279,6 +279,7 @@ export class AgentLoop {
 							msg.chat_id,
 							msg.channel,
 							checkpointer,
+							msg,
 						);
 					} catch (err) {
 						logger.error(
@@ -288,37 +289,46 @@ export class AgentLoop {
 						throw err; // Propagate to trigger retry
 					}
 
-					// Create decoupled Event Observer
-					const observer = new AgentEventObserver(
-						this.bus,
-						msg.chat_id,
-						msg.channel,
-						replyTo,
-						streamId,
-					);
+					// Check if consolidation was activated during this cron run
+					const postCronState = await StateManager.getConsolidationState(msg.chat_id);
+					if (!isConsolidationActive && postCronState?.active) {
+						logger.info(
+							`[AgentLoop] Consolidation was activated during daily cron for chat ${msg.chat_id}. Skipping main agent invocation for this turn.`,
+						);
+						succeeded = true;
+					} else {
+						// Create decoupled Event Observer
+						const observer = new AgentEventObserver(
+							this.bus,
+							msg.chat_id,
+							msg.channel,
+							replyTo,
+							streamId,
+						);
 
-					// Execute using declarative LangGraph StateGraph
-					await compiledGraph.invoke(
-						{ messages: checkpointer.messages },
-						{
-							configurable: {
-								workspaceDir,
-								agentModel: model,
-								agentTools: tools,
-								chatId: msg.chat_id,
-								channel: msg.channel,
-								observer,
-								appConfig: this.config,
-								agent,
-								systemPrompt: customSystemPrompt,
-								bus: this.bus,
-								isConsolidationActive,
+						// Execute using declarative LangGraph StateGraph
+						await compiledGraph.invoke(
+							{ messages: checkpointer.messages },
+							{
+								configurable: {
+									workspaceDir,
+									agentModel: model,
+									agentTools: tools,
+									chatId: msg.chat_id,
+									channel: msg.channel,
+									observer,
+									appConfig: this.config,
+									agent,
+									systemPrompt: customSystemPrompt,
+									bus: this.bus,
+									isConsolidationActive,
+								},
+								signal: controller.signal,
+								recursionLimit: this.config.agent.max_iterations,
 							},
-							signal: controller.signal,
-							recursionLimit: this.config.agent.max_iterations,
-						},
-					);
-					succeeded = true;
+						);
+						succeeded = true;
+					}
 				} catch (e) {
 					if (
 						controller.signal.aborted ||
@@ -398,6 +408,7 @@ export class AgentLoop {
 		chatId: string,
 		channel: string,
 		checkpointer: FileCheckpointSaver,
+		pendingRequest?: InboundMessage,
 	): Promise<void> {
 		try {
 			const todayStr = todayISODate();
@@ -415,6 +426,7 @@ export class AgentLoop {
 						chatId,
 						channel,
 						this.bus,
+						pendingRequest,
 					);
 				}
 

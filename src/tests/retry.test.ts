@@ -65,6 +65,9 @@ vi.mock("@/agent/agents", () => ({
 									content: replyText,
 								});
 							}
+							if (condState?.pendingRequest) {
+								await bus.publishInbound(condState.pendingRequest);
+							}
 							return `Consolidation concluded with action "${action}". Control returned to main agent.`;
 						} catch (err) {
 							return `Error concluding consolidation: ${(err as Error).message}`;
@@ -487,8 +490,50 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		await agentLoop.stop();
 	});
 
+	it("should save the pending request in consolidation state and re-publish it to the inbound queue when conclude_consolidation is invoked", async () => {
+		const { createConsolidationAgent } = await import("@/agent/agents");
+
+		const pendingMsg = {
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chatWipe",
+			content: "what can you do",
+			metadata: { message_id: "105" },
+		};
+
+		// 1. Activate consolidation state with the pending request
+		await StateManager.saveConsolidationState("chatWipe", {
+			active: true,
+			proposedWorkflow: "mock-workflow-content",
+			checkpointMessageCount: 1,
+			pendingRequest: pendingMsg,
+		});
+
+		// 2. Instantiate consolidation agent
+		const agentInstance = await createConsolidationAgent(
+			config,
+			config.workspace_dir,
+			"chatWipe",
+			bus,
+			"telegram",
+		);
+		const concludeTool = agentInstance.options.tools?.find(
+			(t: { name: string }) => t.name === "conclude_consolidation",
+		);
+		expect(concludeTool).toBeDefined();
+
+		// 3. Invoke conclude_consolidation tool
+		await concludeTool.invoke({ action: "save" });
+
+		// 4. Verify original user request was re-published to the inbound queue
+		const recovered = await bus.consumeInbound();
+		expect(recovered.content).toBe("what can you do");
+		expect(recovered.chat_id).toBe("chatWipe");
+	});
+
 	it("should run unified compaction daily cron when date changes", async () => {
 		const publishOutboundSpy = vi.spyOn(bus, "publishOutbound");
+		mockGraphInvoke.mockClear();
 
 		const agentLoop = new AgentLoop(config, bus);
 		await agentLoop.start();
@@ -522,6 +567,58 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 				chat_id: "chatCron",
 			}),
 		);
+
+		// Since no workflow was extracted, the main agent should be invoked
+		expect(mockGraphInvoke).toHaveBeenCalled();
+
+		await agentLoop.stop();
+	});
+
+	it("should bypass agent execution if daily compaction cron activates consolidation", async () => {
+		const { createChatModel } = await import("@/agent/models");
+
+		// Mock the LLM to return a valid workflow, triggering consolidation
+		const mockInvoke = vi.fn().mockResolvedValue({
+			content: JSON.stringify({
+				profile: { username: "testuser" },
+				workflow: `---\nname: workflow-test\ndescription: test\n---\ntest content`,
+			}),
+		});
+		vi.mocked(createChatModel).mockResolvedValue({
+			invoke: mockInvoke,
+		} as any);
+
+		mockGraphInvoke.mockClear();
+
+		const agentLoop = new AgentLoop(config, bus);
+		await agentLoop.start();
+
+		// Pre-populate checkpoint message
+		const { FileCheckpointSaver } = await import("@/agent/store");
+		const { HumanMessage } = await import("@langchain/core/messages");
+		const checkpointer = new FileCheckpointSaver("chatCronBypass");
+		checkpointer.messages = [new HumanMessage("hello world")];
+		await checkpointer.save();
+
+		// Trigger daily cron with an inbound message
+		await bus.publishInbound({
+			channel: "telegram",
+			sender_id: "user1",
+			chat_id: "chatCronBypass",
+			content: "run cron turn",
+			metadata: { message_id: "106" },
+		});
+
+		// Wait for the loop to process the message
+		await new Promise((resolve) => setTimeout(resolve, 1000));
+
+		// Verify consolidation state was activated
+		const condState = await StateManager.getConsolidationState("chatCronBypass");
+		expect(condState).not.toBeNull();
+		expect(condState?.active).toBe(true);
+
+		// Verify the main agent Graph invoke was bypassed (not called)
+		expect(mockGraphInvoke).not.toHaveBeenCalled();
 
 		await agentLoop.stop();
 	});

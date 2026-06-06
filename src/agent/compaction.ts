@@ -7,6 +7,7 @@ import {
 } from "@langchain/core/messages";
 import { summarizationMiddleware } from "langchain";
 import type { MessageBus } from "@/bus/queue";
+import type { InboundMessage } from "@/bus/message";
 import { getWorkspaceDir } from "@/config/paths";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
@@ -52,6 +53,7 @@ export async function compactAndExtractWorkflows(
 	chatId: string,
 	_channel: string,
 	_bus: MessageBus,
+	pendingRequest?: InboundMessage,
 ): Promise<{
 	compactedMessages: BaseMessage[];
 	newWorkflowName: string | null;
@@ -225,6 +227,7 @@ Do NOT wrap the JSON in markdown blocks or include any other conversational prea
 						active: true,
 						proposedWorkflow: updatedContent,
 						checkpointMessageCount: compactedMessages.length,
+						pendingRequest,
 					});
 					newWorkflowName = skillName;
 					logger.info(
@@ -263,6 +266,7 @@ export async function forceCompactMessages(
 	chatId: string,
 	channel: string,
 	bus: MessageBus,
+	pendingRequest?: InboundMessage,
 ): Promise<{ compacted: BaseMessage[]; newWorkflow: string | null } | null> {
 	if (messages.length === 0) return null;
 
@@ -287,6 +291,7 @@ export async function forceCompactMessages(
 				chatId,
 				channel,
 				bus,
+				pendingRequest,
 			);
 
 		const tokensAfter = estimateMessagesTokens(compactedMessages);

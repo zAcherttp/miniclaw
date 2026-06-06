@@ -174,6 +174,14 @@ export async function createConsolidationAgent(
 					content: replyText,
 				});
 
+				// Re-publish the original pending user request back to the inbound queue
+				if (condState?.pendingRequest) {
+					await bus.publishInbound(condState.pendingRequest);
+					logger.info(
+						`[Consolidation] Re-published pending user request: "${condState.pendingRequest.content}"`,
+					);
+				}
+
 				return `Consolidation concluded with action "${action}". Control returned to main agent.`;
 			} catch (err) {
 				return `Error concluding consolidation: ${(err as Error).message}`;
