@@ -3,79 +3,1218 @@
 
 \section{Sơ đồ Use Case}
 \subsection{Giới thiệu sơ đồ Use Case}
-Sơ đồ Use Case mô tả các mối quan hệ tương tác giữa các tác nhân bên ngoài và các chức năng cốt lõi của hệ thống trợ lý ảo Miniclaw.
+Sơ đồ Use Case mô tả mối quan hệ tương tác giữa các tác nhân bên ngoài (người dùng, quản trị viên, các dịch vụ tích hợp) và tác nhân hệ thống chạy ngầm với các chức năng cốt lõi của trợ lý ảo MiniClaw.
 
 \subsection{Các tác nhân trong hệ thống}
-Hệ thống xác định hai tác nhân chính:
+Hệ thống phân tách các thực thể tương tác thành ba nhóm vai trò chính, hệ thống và dịch vụ như sau:
 \begin{itemize}
-  \item \textbf{User (Telegram User):} Thực hiện trò chuyện, tạo nhắc nhở và phản hồi duyệt lưu quy trình.
-  \item \textbf{Admin (CLI/Developer):} Khởi tạo hệ thống, thiết lập file biến môi trường và quản lý các kỹ năng trực tiếp.
+  \item \textbf{Người dùng (User - Tác nhân chính):} Là thực thể tương tác chính với trợ lý ảo thông qua giao diện Telegram. Người dùng gửi yêu cầu bằng ngôn ngữ tự nhiên để trò chuyện, thiết lập nhắc nhở, đồng bộ lịch trình, quản lý thư/công việc và tham gia kiểm duyệt quy trình làm việc (HITL).
+  \item \textbf{Quản trị viên (Admin - Tác nhân chính):} Là nhà phát triển hoặc người vận hành hệ thống, thực hiện cài đặt, cấu hình biến môi trường, định cấu hình danh sách an toàn (allow-list) và khởi tạo ứng dụng qua giao diện CLI.
+  \item \textbf{Tiến trình nền (Daemon - Tác nhân hệ thống):} Là tiến trình chạy ngầm liên tục trên máy chủ cá nhân để điều phối bộ lập lịch sự kiện, giám sát tệp tin kỹ năng để nạp động công cụ mới và kích hoạt kiểm tra nén ngữ cảnh định kỳ.
+  \item \textbf{Dịch vụ Lịch trình (Calendar Service - Tác nhân dịch vụ):} Giao tiếp với API ngoài (Google Calendar, Lark Calendar) để đồng bộ sự kiện lịch biểu.
+  \item \textbf{Dịch vụ Thư điện tử (Mail Service - Tác nhân dịch vụ):} Giao tiếp với API ngoài (Gmail, Lark Mail) để quản lý thư tín.
+  \item \textbf{Dịch vụ Công việc (Task Service - Tác nhân dịch vụ):} Giao tiếp với API ngoài (Google Tasks, Lark Tasks) để cập nhật và đồng bộ danh sách tác vụ thường nhật.
 \end{itemize}
 
 \subsection{Các Use Case chính}
-Các ca sử dụng chính được phân nhóm theo quản trị hệ thống, tương tác thường nhật và quản lý kỹ năng/lịch biểu.
+Các ca sử dụng chính của hệ thống MiniClaw được phân chia theo hai trụ cột nghiệp vụ cốt lõi của đề tài (quản lý lịch trình, công việc hàng ngày) kết hợp cùng cơ chế quản trị và tự động hóa tác nhân.
 
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ Use Case tổng thể hệ thống.}
+\begin{center}
+  \resizebox{\textwidth}{!}{
+  \begin{tikzpicture}[
+      % --- GLOBAL STYLES & SEMANTIC COLORS (MONOCHROME) ---
+      every node/.style={font=\small},
+      sys-neutral/.style={rectangle, draw=black!80, fill=gray!20, thick, rounded corners=2pt, align=center},
+      sys-client/.style={rectangle, draw=black!80, fill=gray!10, thick, rounded corners=2pt, align=center},
+      sys-core/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center},
+      sys-data/.style={rectangle, draw=black!80, fill=gray!10, thick, rounded corners=2pt, align=center},
+      sys-alert/.style={rectangle, draw=black!100, fill=gray!20, double, thick, rounded corners=2pt, align=center},
+      %
+      uc/.style={minimum width=6.4cm, minimum height=0.75cm, text width=6.4cm, align=center, inner sep=2pt},
+      actor/.style={minimum width=2.8cm, minimum height=1.1cm, text width=2.6cm, align=center, inner sep=3pt},
+      line/.style={thick, draw=black!70}
+  ]
+    %
+    % 1. System Boundary
+    \draw[thick, draw=black!80, fill=gray!5, rounded corners=4pt] (-3.8, 1.0) rectangle (3.8, -10.4);
+    \node[font=\scriptsize\itshape, anchor=south] at (0, 1.02) {«system»};
+    \node[font=\bfseries\small, anchor=north] at (0, 0.8) {Hệ thống MiniClaw};
+    %
+    % 2. Use Cases 
+    \node[sys-core, uc] (uc1) at (0, -0.4) {UC-01: Trò chuyện tự nhiên};
+    \node[sys-core, uc] (uc2) at (0, -1.5) {UC-02: Lập lịch \& cập nhật sự kiện};
+    \node[sys-core, uc] (uc3) at (0, -2.6) {UC-03: Thiết lập nhắc nhở cục bộ};
+    \node[sys-core, uc] (uc4) at (0, -3.7) {UC-04: Kích hoạt nhắc nhở};
+    \node[sys-core, uc] (uc5) at (0, -4.8) {UC-05: Quản lý thư điện tử};
+    \node[sys-core, uc] (uc6) at (0, -5.9) {UC-06: Quản lý công việc};
+    \node[sys-alert, uc] (uc7) at (0, -7.0) {UC-07: Duyệt quy trình (HITL)};
+    \node[sys-core, uc] (uc8) at (0, -8.1) {UC-08: Nạp động quy trình mới};
+    \node[sys-core, uc] (uc9) at (0, -9.2) {UC-09: Khởi tạo hệ thống CLI};
+    %
+    % 3. Primary Actors
+    \node[sys-client, actor] (user) at (-6.8, -3.7) {Người dùng\protect\\(User)};
+    \node[font=\scriptsize\itshape, above=2pt] at (user.north) {«actor»};
+    \node[sys-client, actor] (admin) at (-6.8, -9.2) {Quản trị viên\protect\\(Admin)};
+    \node[font=\scriptsize\itshape, above=2pt] at (admin.north) {«actor»};
+    %
+    % 4. Secondary Actors (stereotype as separate node above each box)
+    \node[sys-data, actor] (calendar) at (6.8, -1.0) {Dịch vụ Lịch trình\protect\\(Calendar API)};
+    \node[font=\scriptsize\itshape, above=2pt] at (calendar.north) {«service»};
+    \node[sys-data, actor] (mail) at (6.8, -3.4) {Dịch vụ Thư điện tử\protect\\(Mail API)};
+    \node[font=\scriptsize\itshape, above=2pt] at (mail.north) {«service»};
+    \node[sys-data, actor] (task) at (6.8, -5.8) {Dịch vụ Công việc\protect\\(Task API)};
+    \node[font=\scriptsize\itshape, above=2pt] at (task.north) {«service»};
+    \node[sys-neutral, actor] (daemon) at (6.8, -8.2) {Tiến trình nền\protect\\(Daemon)};
+    \node[font=\scriptsize\itshape, above=2pt] at (daemon.north) {«daemon»};
+    %
+    % 5. Link User
+    \draw[line] (user.east) -- (uc1.west);
+    \draw[line] (user.east) -- (uc2.west);
+    \draw[line] (user.east) -- (uc3.west);
+    \draw[line] (user.east) -- (uc5.west);
+    \draw[line] (user.east) -- (uc6.west);
+    \draw[line] (user.east) -- (uc7.west);
+    %
+    % 6. Link Admin
+    \draw[line] (admin.east) -- (uc9.west);
+    %
+    % 7. Link Services
+    \draw[line] (uc2.east) -- (calendar.west);
+    \draw[line] (uc5.east) -- (mail.west);
+    \draw[line] (uc6.east) -- (task.west);
+    %
+    % 8. Link Daemon
+    \draw[line] (daemon.west) -- (uc4.east);
+    \draw[line] (daemon.west) -- (uc7.east);
+    \draw[line] (daemon.west) -- (uc8.east);
+  \end{tikzpicture}
+  }
+  
+  \captionof{figure}{\emph{Sơ đồ Use Case tổng thể của hệ thống MiniClaw.}}
   \label{fig:use-case-diagram}
-\end{figure}
+\end{center}
+
+
+
+Phân tích sơ đồ Hình \ref{fig:use-case-diagram} cho thấy tính phân tách rõ ràng giữa các tác nhân bên ngoài và các tiến trình tự động của hệ thống. Bằng cách đưa \texttt{Daemon} làm tác nhân hệ thống phụ trách kích hoạt (trigger) các tác vụ chạy ngầm như \texttt{UC-04}, \texttt{UC-07} và \texttt{UC-08}, MiniClaw duy trì tính tự trị cao mà không cần sự can thiệp trực tiếp từ người dùng. Sự trừu tượng hóa các tác nhân dịch vụ (\texttt{Calendar Service}, \texttt{Mail Service}, \texttt{Task Service}) giúp cô lập logic nghiệp vụ của trợ lý ảo khỏi các nhà cung cấp cụ thể (Google Workspace, Lark Suite), từ đó tăng khả năng bảo trì và mở rộng hệ thống sau này.
 
 \subsection{Đặc tả ca sử dụng chi tiết (Use Case Specification)}
-Trình bày chi tiết luồng xử lý chính và ngoại lệ cho các ca sử dụng như xác thực truy cập qua allow-list, quản lý nhắc nhở và đàm thoại nén duyệt lưu quy trình.
+Bảng đặc tả dưới đây trình bày luồng nghiệp vụ chính, điều kiện tiên quyết, hậu điều kiện và các ngoại lệ cho toàn bộ chín ca sử dụng của hệ thống MiniClaw.
+
+% ---- UC-01 ----
+\subsubsection{UC-01: Trò chuyện tự nhiên}
+\label{subsec:spec-uc01}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-01: Trò chuyện tự nhiên.}} \label{tab:spec-uc01} \\
+  \hline
+  Mã use case      & UC-01 \\ \hline
+  Tên use case     & Trò chuyện tự nhiên \\ \hline
+  Mô tả            & Người dùng gửi tin nhắn ngôn ngữ tự nhiên qua Telegram. AgentLoop tiếp nhận, gộp tin (Message Coalescing 250ms), suy luận LLM và phản hồi. \\ \hline
+  Actors           & Người dùng (User) \\ \hline
+  Pre-Conditions   & Hệ thống đang chạy; người dùng trong danh sách allowlist. \\ \hline
+  Post-Conditions  & Phản hồi gửi về Telegram; lịch sử hội thoại cập nhật vào bộ nhớ ngắn hạn. \\ \hline
+  Main Flow        & (1) Người dùng gửi tin nhắn qua Telegram.\newline
+                     (2) Telegram Bot đẩy vào MessageBus.\newline
+                     (3) MessageBus gộp tin theo cửa sổ debounce 250ms.\newline
+                     (4) AgentLoop nhận batch, khởi tạo vòng lặp suy luận.\newline
+                     (5) LLM sinh phản hồi hoặc lệnh gọi công cụ.\newline
+                     (6) Phản hồi gửi lại người dùng qua Telegram. \\ \hline
+  Alternative Flow & [A1] Nhiều tin nhắn trong 250ms → gộp thành batch duy nhất.\newline
+                     [A2] LLM gọi Tool → thực thi → lấy kết quả → tiếp tục suy luận. \\ \hline
+  Exception        & [E1] LLM API timeout: thông báo lỗi, kết thúc vòng lặp.\newline
+                     [E2] Người dùng ngoài allowlist: từ chối, không phản hồi. \\ \hline
+  Business Rules   & Chỉ người dùng trong allowlist được tương tác.\newline
+                     Lịch sử được nén (summarize) khi vượt ngưỡng context window. \\ \hline
+\end{longtable}
+
+% ---- UC-02 ----
+\subsubsection{UC-02: Lập lịch \& cập nhật sự kiện}
+\label{subsec:spec-uc02}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-02: Lập lịch \& cập nhật sự kiện.}} \label{tab:spec-uc02} \\
+  \hline
+  Mã use case      & UC-02 \\ \hline
+  Tên use case     & Lập lịch \& cập nhật sự kiện \\ \hline
+  Mô tả            & Người dùng yêu cầu tạo, chỉnh sửa hoặc xóa sự kiện lịch qua ngôn ngữ tự nhiên. AgentLoop gọi Calendar Tool tích hợp với Calendar API ngoài. \\ \hline
+  Actors           & Người dùng (User); Dịch vụ Lịch trình (Calendar API) \\ \hline
+  Pre-Conditions   & Calendar API credentials đã cấu hình trong biến môi trường. \\ \hline
+  Post-Conditions  & Sự kiện được tạo/cập nhật/xóa trên Calendar API; người dùng nhận xác nhận. \\ \hline
+  Main Flow        & (1) Người dùng yêu cầu lập lịch bằng ngôn ngữ tự nhiên.\newline
+                     (2) AgentLoop phân tích ý định và trích xuất thông tin sự kiện.\newline
+                     (3) Gọi Calendar Tool với tham số sự kiện.\newline
+                     (4) Calendar Tool giao tiếp với Calendar API (Google / Lark).\newline
+                     (5) Kết quả trả về AgentLoop.\newline
+                     (6) AgentLoop gửi xác nhận cho người dùng. \\ \hline
+  Alternative Flow & [A1] Sự kiện trùng giờ → hỏi người dùng xác nhận ghi đè.\newline
+                     [A2] Người dùng yêu cầu xem danh sách sự kiện → trả về từ API. \\ \hline
+  Exception        & [E1] Calendar API lỗi/timeout: thông báo người dùng, ghi log.\newline
+                     [E2] Thông tin sự kiện thiếu: yêu cầu người dùng bổ sung. \\ \hline
+  Business Rules   & Chỉ thao tác trên lịch của người dùng đã xác thực qua OAuth.\newline
+                     Định dạng thời gian theo múi giờ cục bộ cấu hình trong hệ thống. \\ \hline
+\end{longtable}
+
+% ---- UC-03 ----
+\subsubsection{UC-03: Thiết lập nhắc nhở cục bộ}
+\label{subsec:spec-uc03}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-03: Thiết lập nhắc nhở cục bộ.}} \label{tab:spec-uc03} \\
+  \hline
+  Mã use case      & UC-03 \\ \hline
+  Tên use case     & Thiết lập nhắc nhở cục bộ \\ \hline
+  Mô tả            & Người dùng đặt nhắc nhở tại thời điểm cụ thể. Nhắc nhở lưu cục bộ dạng JSON và được \texttt{TaskScheduler} quản lý. \\ \hline
+  Actors           & Người dùng (User) \\ \hline
+  Pre-Conditions   & Hệ thống đang chạy; \texttt{TaskScheduler} đã khởi tạo. \\ \hline
+  Post-Conditions  & Nhắc nhở lưu vào tệp lưu trữ cục bộ với thời gian kích hoạt xác định. \\ \hline
+  Main Flow        & (1) Người dùng gửi yêu cầu đặt nhắc nhở kèm nội dung và thời gian.\newline
+                     (2) AgentLoop trích xuất thời gian và nội dung nhắc nhở.\newline
+                     (3) Gọi Reminder Tool để tạo bản ghi.\newline
+                     (4) Bản ghi lưu vào tệp JSON của người dùng.\newline
+                     (5) \texttt{TaskScheduler} nạp lại danh sách nhắc nhở.\newline
+                     (6) Xác nhận gửi cho người dùng. \\ \hline
+  Alternative Flow & [A1] Thời gian không rõ ràng → AgentLoop hỏi xác nhận lại với người dùng. \\ \hline
+  Exception        & [E1] Lỗi ghi tệp lưu trữ: thông báo người dùng, không tạo nhắc nhở.\newline
+                     [E2] Thời gian nhắc nhở đã qua: từ chối và thông báo lỗi. \\ \hline
+  Business Rules   & Thời gian nhắc nhở phải là thời điểm trong tương lai.\newline
+                     Tệp lưu trữ nhắc nhở phân tách riêng theo từng người dùng. \\ \hline
+\end{longtable}
+
+% ---- UC-04 ----
+\subsubsection{UC-04: Kích hoạt nhắc nhở}
+\label{subsec:spec-uc04}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-04: Kích hoạt nhắc nhở.}} \label{tab:spec-uc04} \\
+  \hline
+  Mã use case      & UC-04 \\ \hline
+  Tên use case     & Kích hoạt nhắc nhở \\ \hline
+  Mô tả            & Tiến trình nền tự động theo dõi thời gian và gửi thông báo nhắc nhở đến người dùng qua Telegram khi đến hạn. \\ \hline
+  Actors           & Tiến trình nền (Daemon) \\ \hline
+  Pre-Conditions   & Nhắc nhở đã được lưu (UC-03); Tiến trình nền đang chạy liên tục. \\ \hline
+  Post-Conditions  & Người dùng nhận tin nhắn nhắc nhở qua Telegram; nhắc nhở được đánh dấu đã kích hoạt. \\ \hline
+  Main Flow        & (1) \texttt{TaskScheduler} quét danh sách nhắc nhở định kỳ (60 giây/lần).\newline
+                     (2) Phát hiện nhắc nhở đến hạn kích hoạt.\newline
+                     (3) Gửi tin nhắn nhắc nhở đến Telegram của người dùng.\newline
+                     (4) Đánh dấu nhắc nhở đã kích hoạt trong tệp lưu trữ. \\ \hline
+  Alternative Flow & [A1] Người dùng yêu cầu xem danh sách nhắc nhở pending → trả về danh sách. \\ \hline
+  Exception        & [E1] Telegram API lỗi khi gửi: ghi log, thử lại sau 60 giây.\newline
+                     [E2] Tệp lưu trữ bị hỏng: bỏ qua và ghi log cảnh báo. \\ \hline
+  Business Rules   & Chu kỳ quét là 60 giây.\newline
+                     Nhắc nhở đã kích hoạt không được kích hoạt lại. \\ \hline
+\end{longtable}
+
+% ---- UC-05 ----
+\subsubsection{UC-05: Quản lý thư điện tử}
+\label{subsec:spec-uc05}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-05: Quản lý thư điện tử.}} \label{tab:spec-uc05} \\
+  \hline
+  Mã use case      & UC-05 \\ \hline
+  Tên use case     & Quản lý thư điện tử \\ \hline
+  Mô tả            & Người dùng đọc, soạn hoặc quản lý thư điện tử qua ngôn ngữ tự nhiên. AgentLoop gọi Mail Tool tích hợp với Mail API ngoài. \\ \hline
+  Actors           & Người dùng (User); Dịch vụ Thư điện tử (Mail API) \\ \hline
+  Pre-Conditions   & Mail API credentials đã cấu hình trong biến môi trường. \\ \hline
+  Post-Conditions  & Thao tác thư (đọc/soạn/đánh nhãn) thực hiện thành công; người dùng nhận phản hồi tóm tắt. \\ \hline
+  Main Flow        & (1) Người dùng gửi yêu cầu liên quan đến thư điện tử.\newline
+                     (2) AgentLoop phân tích ý định (đọc/soạn/tìm kiếm thư).\newline
+                     (3) Gọi Mail Tool với tham số phù hợp.\newline
+                     (4) Mail Tool giao tiếp với Mail API (Gmail / Lark Mail).\newline
+                     (5) Kết quả trả về AgentLoop.\newline
+                     (6) AgentLoop tóm tắt và gửi phản hồi cho người dùng. \\ \hline
+  Alternative Flow & [A1] Yêu cầu soạn thư → AgentLoop soạn nháp và hỏi xác nhận trước khi gửi. \\ \hline
+  Exception        & [E1] Mail API lỗi/timeout: thông báo người dùng.\newline
+                     [E2] Không tìm thấy thư phù hợp: thông báo kết quả rỗng. \\ \hline
+  Business Rules   & Thao tác xóa thư yêu cầu xác nhận của người dùng.\newline
+                     Chỉ thao tác trên hộp thư của người dùng đã xác thực. \\ \hline
+\end{longtable}
+
+% ---- UC-06 ----
+\subsubsection{UC-06: Quản lý công việc}
+\label{subsec:spec-uc06}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-06: Quản lý công việc.}} \label{tab:spec-uc06} \\
+  \hline
+  Mã use case      & UC-06 \\ \hline
+  Tên use case     & Quản lý công việc \\ \hline
+  Mô tả            & Người dùng tạo, cập nhật hoặc đánh dấu hoàn thành công việc qua ngôn ngữ tự nhiên. AgentLoop gọi Task Tool tích hợp với Task API ngoài. \\ \hline
+  Actors           & Người dùng (User); Dịch vụ Công việc (Task API) \\ \hline
+  Pre-Conditions   & Task API credentials đã cấu hình trong biến môi trường. \\ \hline
+  Post-Conditions  & Công việc được tạo/cập nhật/hoàn thành trên Task API; người dùng nhận xác nhận. \\ \hline
+  Main Flow        & (1) Người dùng gửi yêu cầu quản lý công việc.\newline
+                     (2) AgentLoop phân tích ý định và trích xuất thông tin công việc.\newline
+                     (3) Gọi Task Tool với tham số tương ứng.\newline
+                     (4) Task Tool giao tiếp với Task API (Google Tasks / Lark Tasks).\newline
+                     (5) Kết quả trả về AgentLoop.\newline
+                     (6) AgentLoop gửi xác nhận cho người dùng. \\ \hline
+  Alternative Flow & [A1] Người dùng yêu cầu xem danh sách công việc → trả về từ Task API. \\ \hline
+  Exception        & [E1] Task API lỗi/timeout: thông báo người dùng. \\ \hline
+  Business Rules   & Công việc đã hoàn thành không bị xóa tự động.\newline
+                     Đồng bộ hai chiều giữa hệ thống và Task API. \\ \hline
+\end{longtable}
+
+% ---- UC-07 ----
+\subsubsection{UC-07: Duyệt quy trình (HITL)}
+\label{subsec:spec-uc07}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-07: Duyệt quy trình (HITL).}} \label{tab:spec-uc07} \\
+  \hline
+  Mã use case      & UC-07 \\ \hline
+  Tên use case     & Duyệt quy trình (HITL) \\ \hline
+  Mô tả            & Hệ thống phát hiện hành vi lặp và đề xuất trích xuất quy trình. Người dùng xem xét, phê duyệt hoặc từ chối lưu kỹ năng mới dưới dạng tệp \texttt{SKILL.md}. \\ \hline
+  Actors           & Người dùng (User); Tiến trình nền (Daemon) \\ \hline
+  Pre-Conditions   & AgentLoop phát hiện pattern lặp đủ ngưỡng kích hoạt HITL; người dùng đang hoạt động trên Telegram. \\ \hline
+  Post-Conditions  & Tệp \texttt{SKILL.md} lưu thành công (nếu phê duyệt) hoặc bị từ chối; lịch sử hội thoại được cắt tỉa. \\ \hline
+  Main Flow        & (1) AgentLoop phát hiện hành vi lặp đủ ngưỡng, sinh đề xuất quy trình.\newline
+                     (2) Hệ thống gửi nội dung \texttt{SKILL.md} dự thảo kèm nút phê duyệt/từ chối.\newline
+                     (3) Người dùng nhấn nút phê duyệt.\newline
+                     (4) SkillManager lưu tệp \texttt{SKILL.md} vào thư mục kỹ năng.\newline
+                     (5) Lịch sử hội thoại được cắt tỉa (prune) để giải phóng context.\newline
+                     (6) Thông báo kết quả cho người dùng. \\ \hline
+  Alternative Flow & [A1] Người dùng yêu cầu chỉnh sửa → AgentLoop tạo lại bản nháp.\newline
+                     [A2] Người dùng không phản hồi trong thời gian chờ → hủy đề xuất. \\ \hline
+  Exception        & [E1] Lỗi ghi tệp \texttt{SKILL.md}: thông báo lỗi, không cắt tỉa lịch sử. \\ \hline
+  Business Rules   & Quy trình chỉ lưu sau khi có phê duyệt rõ ràng từ người dùng.\newline
+                     Tên tệp \texttt{SKILL.md} phải duy nhất trong thư mục kỹ năng. \\ \hline
+\end{longtable}
+
+% ---- UC-08 ----
+\subsubsection{UC-08: Nạp động quy trình mới}
+\label{subsec:spec-uc08}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-08: Nạp động quy trình mới.}} \label{tab:spec-uc08} \\
+  \hline
+  Mã use case      & UC-08 \\ \hline
+  Tên use case     & Nạp động quy trình mới \\ \hline
+  Mô tả            & Tiến trình nền giám sát thư mục kỹ năng. Khi phát hiện tệp \texttt{SKILL.md} mới, SkillManager nạp lại danh sách công cụ mà không cần khởi động lại hệ thống. \\ \hline
+  Actors           & Tiến trình nền (Daemon) \\ \hline
+  Pre-Conditions   & SkillManager đang chạy và giám sát thư mục kỹ năng bằng file watcher. \\ \hline
+  Post-Conditions  & Công cụ/kỹ năng mới nạp vào AgentLoop và sẵn sàng sử dụng trong phiên hội thoại tiếp theo. \\ \hline
+  Main Flow        & (1) Daemon phát hiện thay đổi trong thư mục kỹ năng (file watcher event).\newline
+                     (2) SkillManager đọc và phân tích tệp \texttt{SKILL.md} mới.\newline
+                     (3) Công cụ mới đăng ký vào danh sách công cụ của AgentLoop.\newline
+                     (4) AgentLoop xác nhận công cụ sẵn sàng. \\ \hline
+  Alternative Flow & [A1] Tệp \texttt{SKILL.md} có cú pháp sai → ghi log cảnh báo, bỏ qua tệp. \\ \hline
+  Exception        & [E1] Lỗi đọc tệp: ghi log và tiếp tục giám sát. \\ \hline
+  Business Rules   & Nạp động không được gây gián đoạn phiên hội thoại đang diễn ra.\newline
+                     Mỗi tệp \texttt{SKILL.md} phải có cấu trúc YAML frontmatter hợp lệ. \\ \hline
+\end{longtable}
+
+% ---- UC-09 ----
+\subsubsection{UC-09: Khởi tạo hệ thống CLI}
+\label{subsec:spec-uc09}
+\renewcommand{\arraystretch}{1.4}
+\begin{longtable}{|>{\bfseries}p{3.5cm}|p{10.5cm}|}
+  \caption{\emph{Đặc tả UC-09: Khởi tạo hệ thống CLI.}} \label{tab:spec-uc09} \\
+  \hline
+  Mã use case      & UC-09 \\ \hline
+  Tên use case     & Khởi tạo hệ thống CLI \\ \hline
+  Mô tả            & Quản trị viên chạy lệnh CLI để cấu hình biến môi trường, allowlist người dùng và kiểm tra tính hợp lệ của cài đặt ban đầu. \\ \hline
+  Actors           & Quản trị viên (Admin) \\ \hline
+  Pre-Conditions   & Node.js và pnpm đã cài đặt trên máy chủ; tệp \texttt{.env.example} tồn tại. \\ \hline
+  Post-Conditions  & Tệp \texttt{.env} được tạo với đầy đủ cấu hình; hệ thống sẵn sàng khởi động. \\ \hline
+  Main Flow        & (1) Admin chạy lệnh \texttt{pnpm dev init} trong terminal.\newline
+                     (2) CLI hiển thị wizard hướng dẫn cấu hình từng bước.\newline
+                     (3) Admin nhập Telegram Bot Token, LLM API Key và User ID.\newline
+                     (4) CLI kiểm tra tính hợp lệ của các giá trị nhập vào.\newline
+                     (5) Tệp \texttt{.env} được tạo/cập nhật với cấu hình mới.\newline
+                     (6) CLI xác nhận khởi tạo thành công. \\ \hline
+  Alternative Flow & [A1] Admin bỏ qua bước cấu hình → sử dụng giá trị mặc định nếu có. \\ \hline
+  Exception        & [E1] Token không hợp lệ: hiển thị lỗi và yêu cầu nhập lại.\newline
+                     [E2] Quyền ghi tệp bị từ chối: hiển thị hướng dẫn cấp quyền. \\ \hline
+  Business Rules   & Tệp \texttt{.env} không được commit vào repository (khai báo trong \texttt{.gitignore}).\newline
+                     Cấu hình cũ được backup trước mỗi lần chạy \texttt{init}. \\ \hline
+\end{longtable}
 
 \section{Sơ đồ hoạt động (Activity Diagram)}
-\subsection{Luồng xử lý tin nhắn \& Vòng lặp Agent chính (Main Agent Loop)}
-Mô tả các bước đi tuần tự của một tin nhắn từ lúc đi vào hệ thống cho tới khi LLM xử lý ra quyết định và phản hồi.
 
-\begin{figure}[H]
+% ---- Activity UC-01 ----
+\subsection{UC-01: Luồng xử lý tin nhắn \& Vòng lặp Agent chính}
+Luồng hoạt động UC-01 mô tả đường đi đầy đủ của một lượt hội thoại, từ lúc Telegram tiếp nhận tin nhắn đến khi \texttt{AgentLoop} hoàn tất vòng lặp suy luận và gửi phản hồi về kênh đầu ra.
+
+\begin{figure}[p]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ hoạt động Vòng lặp Agent chính.}
-  \label{fig:activity-main-loop}
+  \resizebox{!}{0.74\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.85cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.0cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.4cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.1, inner sep=1pt, text width=2.9cm},
+      store/.style={cylinder,aspect=0.4, shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=2.8cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Tin nhắn Telegram};
+    \node[decision, below=of start] (allowed) {Allowlist hợp lệ?};
+    \node[action, right=2.5cm of allowed] (blocked) {Ghi nhận blocked attempt\\và bỏ qua tin nhắn};
+    \node[action, below=of allowed] (publish) {\texttt{TelegramChannel}\\\texttt{publishInbound()}};
+    \node[action, below=of publish] (batch) {\texttt{MessageBus}\\gộp batch 250ms theo\\\texttt{channel}\\\texttt{chat\_id}\\\texttt{sender\_id}};
+    \node[action, below=of batch] (active) {\texttt{AgentLoop}\\lưu last active chat\\và active request};
+    \node[decision, below=of active] (consolidation) {Có consolidation\\đang mở?};
+    \node[action, left=2.7cm of consolidation] (conagent) {Tạo Consolidation Agent\\với prompt duyệt workflow};
+    \node[action, right=2.7cm of consolidation] (mainagent) {Tạo Main Agent\\với tool, memory, skills};
+    \node[action, below=1.15cm of consolidation] (graph) {\texttt{compiledGraph}\\\texttt{.invoke()}\\LLM sinh phản hồi hoặc tool call};
+    \node[decision, below=of graph] (toolcall) {Có tool call?};
+    \node[action, left=2.7cm of toolcall] (tools) {Chạy tool tuần tự\\lưu \texttt{ToolMessage}};
+    \node[action, below=of toolcall] (reply) {Publish outbound\\stream/final response};
+    \node[decision, below=of reply] (error) {Thành công\\hoặc bị hủy?};
+    \node[store, right=2.6cm of error] (retry) {\texttt{state.json}\\lưu retry request};
+    \node[startstop, below=of error] (end) {Kết thúc lượt xử lý};
+
+    \draw[arrow] (start) -- (allowed);
+    \draw[arrow] (allowed) -- node[above, font=\scriptsize] {Không} (blocked);
+    \draw[arrow] (allowed) -- node[right, font=\scriptsize] {Có} (publish);
+    \draw[arrow] (publish) -- (batch);
+    \draw[arrow] (batch) -- (active);
+    \draw[arrow] (active) -- (consolidation);
+    \draw[arrow] (consolidation) -- node[above, font=\scriptsize] {Có} (conagent);
+    \draw[arrow] (consolidation) -- node[above, font=\scriptsize] {Không} (mainagent);
+    \draw[arrow] (conagent) |- (graph);
+    \draw[arrow] (mainagent) |- (graph);
+    \draw[arrow] (graph) -- (toolcall);
+    \draw[arrow] (toolcall) -- node[above, font=\scriptsize] {Có} (tools);
+    \draw[arrow] (tools.north) |- (graph.west);
+    \draw[arrow] (toolcall) -- node[right, font=\scriptsize] {Không} (reply);
+    \draw[arrow] (reply) -- (error);
+    \draw[arrow] (error) -- node[right, font=\scriptsize] {Có} (end);
+    \draw[alt] (error) -- node[above, font=\scriptsize] {Lỗi} (retry);
+    \draw[alt] (retry.north) |- (batch.east);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-01: Vòng lặp Agent chính.}}
+  \label{fig:activity-uc01}
 \end{figure}
+\clearpage
 
-\subsection{Luồng trích xuất \& duyệt quy trình (Reusable Workflow Extraction - HITL)}
-Biểu diễn luồng nghiệp vụ trích xuất quy trình và lưu tệp \texttt{SKILL.md} mới sau khi phát hiện hành vi lặp lại.
+Phân tích Hình \ref{fig:activity-uc01} cho thấy \texttt{MessageBus} đóng vai trò lớp đệm giữa tốc độ nhập liệu của người dùng và chi phí gọi LLM. Thiết kế gộp tin 250ms tạo thêm một độ trễ nhỏ, nhưng đổi lại giảm số lượt suy luận rời rạc và giữ nguyên mạch ngữ cảnh khi người dùng gửi nhiều tin ngắn liên tiếp. Việc lưu \texttt{activeRequests} trước khi gọi LangGraph cũng giúp hệ thống có khả năng phục hồi sau lỗi tiến trình thay vì mất hoàn toàn yêu cầu đang xử lý.
 
-\begin{figure}[H]
+% ---- Activity UC-02 ----
+\subsection{UC-02: Luồng lập lịch \& cập nhật sự kiện}
+Luồng UC-02 thể hiện cách MiniClaw xử lý yêu cầu lịch biểu thông qua cơ chế kỹ năng dạng Markdown và lệnh CLI tích hợp, thay vì gắn chặt trực tiếp vào một Calendar API cụ thể.
+
+\begin{figure}[p]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ hoạt động trích xuất \& duyệt quy trình.}
-  \label{fig:activity-extraction}
+  \resizebox{!}{0.76\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.9cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.5cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=2.8cm},
+      external/.style={rectangle, draw=black!80, fill=gray!15, double, thick, rounded corners=2pt, align=center, text width=4.2cm, minimum height=0.85cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Yêu cầu lịch biểu};
+    \node[action, below=of start] (intent) {Agent phân tích ý định\\tạo, xem, cập nhật hoặc xóa sự kiện};
+    \node[decision, below=of intent] (enough) {Đủ thời gian, tiêu đề, người tham dự?};
+    \node[action, right=2.7cm of enough] (ask) {Hỏi người dùng bổ sung\\thông tin còn thiếu};
+    \node[action, below=of enough] (skills) {Tìm và đọc skill lịch\\\texttt{search\_skills} + \texttt{read\_file}};
+    \node[action, below=of skills] (command) {Tạo lệnh an toàn\\cho \texttt{gws} hoặc \texttt{lark-cli}};
+    \node[external, below=of command] (api) {Calendar Service\\Google Calendar / Lark Calendar};
+    \node[decision, below=of api] (ok) {API thành công?};
+    \node[action, right=2.7cm of ok] (fail) {Thông báo lỗi\\và ghi log};
+    \node[action, below=of ok] (confirm) {Tóm tắt kết quả\\và gửi xác nhận};
+    \node[startstop, below=of confirm] (end) {Kết thúc};
+
+    \draw[arrow] (start) -- (intent);
+    \draw[arrow] (intent) -- (enough);
+    \draw[arrow] (enough) -- node[above, font=\scriptsize] {Không} (ask);
+    \draw[alt] (ask.north) |- (intent.east);
+    \draw[arrow] (enough) -- node[right, font=\scriptsize] {Có} (skills);
+    \draw[arrow] (skills) -- (command);
+    \draw[arrow] (command) -- (api);
+    \draw[arrow] (api) -- (ok);
+    \draw[arrow] (ok) -- node[above, font=\scriptsize] {Không} (fail);
+    \draw[arrow] (ok) -- node[right, font=\scriptsize] {Có} (confirm);
+    \draw[arrow] (confirm) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-02: Lập lịch \& cập nhật sự kiện qua Calendar API.}}
+  \label{fig:activity-uc02}
 \end{figure}
+\clearpage
 
-\subsection{Luồng nhắc nhở chạy ngầm (Scheduler Daemon)}
-Mô tả cách thức \texttt{TaskScheduler} quét tệp lưu trữ và kích hoạt thông báo gửi về Telegram của người dùng.
+Hình \ref{fig:activity-uc02} nhấn mạnh lựa chọn tách tri thức thao tác lịch khỏi lõi tác nhân thông qua thư mục \texttt{skills}. Cách tiếp cận này làm luồng dài hơn so với một \texttt{CalendarTool} cố định, nhưng giúp thay đổi nhà cung cấp hoặc cú pháp CLI mà không cần sửa lõi điều phối. Điểm đánh đổi là chất lượng phụ thuộc vào việc Agent đọc đúng tài liệu kỹ năng trước khi thực thi lệnh.
 
-\begin{figure}[H]
+% ---- Activity UC-03 ----
+\subsection{UC-03: Luồng thiết lập nhắc nhở cục bộ}
+Luồng UC-03 mô tả cách một yêu cầu nhắc nhở ngôn ngữ tự nhiên được chuẩn hóa thành bản ghi JSON và bộ hẹn giờ nội bộ.
+
+\begin{figure}[p]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ hoạt động của TaskScheduler.}
-  \label{fig:activity-scheduler}
+  \resizebox{!}{0.76\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.85cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.4cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=2.8cm},
+      store/.style={cylinder,aspect=0.4,  shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=2.8cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Yêu cầu đặt nhắc nhở};
+    \node[action, below=of start] (extract) {Agent chuyển thời gian tương đối\\sang ISO 8601};
+    \node[action, below=of extract] (tool) {Gọi \texttt{manage\_reminders}\\với action \texttt{create}};
+    \node[decision, below=of tool] (valid) {Có \texttt{title}\\và \texttt{targetTime} hợp lệ?};
+    \node[action, right=2.6cm of valid] (invalid) {Trả lỗi hoặc hỏi lại\\thông tin thiếu};
+    \node[action, below=of valid] (record) {Tạo \texttt{rem-\{timestamp\}}\\status \texttt{pending}};
+    \node[store, below=of record] (json) {\texttt{reminders}\\\texttt{.json}};
+    \node[action, below=of json] (schedule) {\texttt{schedule}\\\texttt{Reminder()}\\tính \texttt{triggerTime}};
+    \node[action, below=of schedule] (confirm) {Gửi ID và thời điểm\\kích hoạt cho người dùng};
+    \node[startstop, below=of confirm] (end) {Kết thúc};
+
+    \draw[arrow] (start) -- (extract);
+    \draw[arrow] (extract) -- (tool);
+    \draw[arrow] (tool) -- (valid);
+    \draw[arrow] (valid) -- node[above, font=\scriptsize] {Không} (invalid);
+    \draw[arrow] (valid) -- node[right, font=\scriptsize] {Có} (record);
+    \draw[arrow] (record) -- (json);
+    \draw[arrow] (json) -- (schedule);
+    \draw[arrow] (schedule) -- (confirm);
+    \draw[arrow] (confirm) -- (end);
+    \draw[alt] (invalid.north) |- (extract.east);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-03: Thiết lập nhắc nhở cục bộ.}}
+  \label{fig:activity-uc03}
 \end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc03} cho thấy MiniClaw chọn lưu nhắc nhở bằng tệp cục bộ thay vì phụ thuộc vào một dịch vụ lịch bên ngoài. Thiết kế này giảm yêu cầu cấu hình OAuth và phù hợp mục tiêu trợ lý chạy nền cá nhân, nhưng đặt trách nhiệm nhất quán dữ liệu vào \texttt{TaskScheduler}. Việc tách \texttt{targetTime} và \texttt{triggerTime} cho phép hệ thống nhắc sớm theo ngưỡng động mà vẫn giữ thời hạn gốc của tác vụ.
+
+% ---- Activity UC-04 ----
+\subsection{UC-04: Luồng kích hoạt nhắc nhở (Scheduler Daemon)}
+Luồng UC-04 mô tả cách \texttt{TaskScheduler} phục hồi danh sách nhắc nhở khi khởi động và kích hoạt thông báo bằng timer nội bộ.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.77\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.82cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.0cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.4cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.1, inner sep=1pt, text width=2.9cm},
+      store/.style={cylinder,aspect=0.4,  shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=2.8cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {\texttt{TaskScheduler.start()}};
+    \node[store, below=of start] (json) {Đọc\\\texttt{reminders}\\\texttt{.json}};
+    \node[decision, below=of json] (pending) {Reminder\\\texttt{pending}?};
+    \node[action, right=2.7cm of pending] (skip) {Bỏ qua bản ghi\\đã fired/cancelled};
+    \node[action, below=of pending] (offset) {Tính offset động\\30m, 5m, 2m, 1m, 10s, 1s};
+    \node[decision, below=of offset] (due) {\texttt{triggerTime}\\đã qua?};
+    \node[action, right=2.7cm of due] (timer) {Đặt \texttt{setTimeout}\\cho thời điểm kích hoạt};
+    \node[decision, below=of due] (target) {\texttt{targetTime}\\còn tương lai?};
+    \node[action, left=2.7cm of target] (missed) {Đánh dấu\\\texttt{missed}};
+    \node[action, below=of target] (trigger) {\texttt{triggerReminder()}\\đánh dấu \texttt{fired}};
+    \node[action, below=of trigger] (checkpoint) {Append \texttt{SystemMessage}\\vào checkpoint};
+    \node[action, below=of checkpoint] (outbound) {Publish outbound trực tiếp\\qua \texttt{MessageBus}};
+    \node[startstop, below=of outbound] (end) {Người dùng nhận nhắc nhở};
+
+    \draw[arrow] (start) -- (json);
+    \draw[arrow] (json) -- (pending);
+    \draw[arrow] (pending) -- node[above, font=\scriptsize] {Không} (skip);
+    \draw[arrow] (pending) -- node[right, font=\scriptsize] {Có} (offset);
+    \draw[arrow] (offset) -- (due);
+    \draw[arrow] (due) -- node[above, font=\scriptsize] {Không} (timer);
+    \draw[alt] (timer.south) |- (trigger.east);
+    \draw[arrow] (due) -- node[right, font=\scriptsize] {Có} (target);
+    \draw[arrow] (target) -- node[above, font=\scriptsize] {Không} (missed);
+    \draw[arrow] (target) -- node[right, font=\scriptsize] {Có, late alert} (trigger);
+    \draw[arrow] (trigger) -- (checkpoint);
+    \draw[arrow] (checkpoint) -- (outbound);
+    \draw[arrow] (outbound) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-04: Kích hoạt nhắc nhở (TaskScheduler).}}
+  \label{fig:activity-uc04}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc04} phản ánh đúng cơ chế triển khai hiện tại: scheduler không quét chu kỳ 60 giây mà phục hồi trạng thái rồi đặt \texttt{setTimeout} cho từng nhắc nhở. Cách này tiết kiệm tài nguyên hơn polling định kỳ, nhưng yêu cầu bước phục hồi khi daemon khởi động để xử lý các reminder đã trễ hoặc đã quá hạn. Việc gửi outbound trực tiếp qua \texttt{MessageBus} cũng cố ý bỏ qua vòng LLM, nhờ đó thông báo nhắc nhở không phụ thuộc vào độ trễ suy luận.
+
+% ---- Activity UC-05 ----
+\subsection{UC-05: Luồng quản lý thư điện tử}
+Luồng UC-05 mô tả thao tác đọc, tìm kiếm, soạn và quản lý thư thông qua bộ kỹ năng mail và lệnh tích hợp bên ngoài.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.76\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.88cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.4cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=2.9cm},
+      external/.style={rectangle, draw=black!80, fill=gray!15, double, thick, rounded corners=2pt, align=center, text width=4.1cm, minimum height=0.85cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Yêu cầu mail};
+    \node[action, below=of start] (intent) {Phân loại ý định\\đọc, tìm, soạn, gửi, xóa};
+    \node[action, below=of intent] (skills) {Tìm và đọc skill mail\\Gmail hoặc Lark Mail};
+    \node[decision, below=of skills] (danger) {Thao tác gửi/xóa\\có tác động phụ?};
+    \node[action, right=2.8cm of danger] (confirm) {Soạn nháp hoặc hỏi\\xác nhận người dùng};
+    \node[action, below=of danger] (execute) {Gọi \texttt{execute}\\với CLI phù hợp};
+    \node[external, below=of execute] (api) {Mail Service\\Gmail / Lark Mail};
+    \node[decision, below=of api] (found) {Có kết quả\\hoặc thao tác thành công?};
+    \node[action, right=2.8cm of found] (empty) {Thông báo rỗng\\hoặc lỗi API};
+    \node[action, below=of found] (summary) {Tóm tắt thư/kết quả\\và gửi phản hồi};
+    \node[startstop, below=of summary] (end) {Kết thúc};
+
+    \draw[arrow] (start) -- (intent);
+    \draw[arrow] (intent) -- (skills);
+    \draw[arrow] (skills) -- (danger);
+    \draw[arrow] (danger) -- node[above, font=\scriptsize] {Có} (confirm);
+    \draw[alt] (confirm.south) |- (execute.east);
+    \draw[arrow] (danger) -- node[right, font=\scriptsize] {Không} (execute);
+    \draw[arrow] (execute) -- (api);
+    \draw[arrow] (api) -- (found);
+    \draw[arrow] (found) -- node[above, font=\scriptsize] {Không} (empty);
+    \draw[arrow] (found) -- node[right, font=\scriptsize] {Có} (summary);
+    \draw[arrow] (summary) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-05: Quản lý thư điện tử.}}
+  \label{fig:activity-uc05}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc05} đặt bước xác nhận trước các thao tác có tác động phụ như gửi hoặc xóa thư. Quyết định này làm giảm tính tự động hoàn toàn của Agent, nhưng phù hợp với yêu cầu an toàn vì nội dung email có thể tạo hậu quả bên ngoài hệ thống. Cách dùng skill thay vì hard-code API giúp cùng một luồng nghiệp vụ hỗ trợ cả Gmail và Lark Mail.
+
+% ---- Activity UC-06 ----
+\subsection{UC-06: Luồng quản lý công việc}
+Luồng UC-06 thể hiện cách Agent xử lý các thao tác danh sách công việc bằng bộ kỹ năng task và công cụ thực thi CLI.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.76\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.88cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.4cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=2.9cm},
+      external/.style={rectangle, draw=black!80, fill=gray!15, double, thick, rounded corners=2pt, align=center, text width=4.1cm, minimum height=0.85cm},
+      arrow/.style={thick, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Yêu cầu quản lý công việc};
+    \node[action, below=of start] (intent) {Phân loại thao tác\\list, create, update, complete};
+    \node[decision, below=of intent] (enough) {Đủ tiêu đề, hạn,\\ID hoặc trạng thái?};
+    \node[action, right=2.8cm of enough] (ask) {Hỏi bổ sung\\trường còn thiếu};
+    \node[action, below=of enough] (skills) {Đọc skill task\\Google Tasks / Lark Tasks};
+    \node[action, below=of skills] (execute) {Thực thi lệnh task\\qua \texttt{execute}};
+    \node[external, below=of execute] (api) {Task Service};
+    \node[decision, below=of api] (ok) {Thành công?};
+    \node[action, right=2.8cm of ok] (fail) {Thông báo lỗi\\hoặc không tìm thấy task};
+    \node[action, below=of ok] (reply) {Xác nhận thay đổi\\hoặc trả danh sách};
+    \node[startstop, below=of reply] (end) {Kết thúc};
+
+    \draw[arrow] (start) -- (intent);
+    \draw[arrow] (intent) -- (enough);
+    \draw[arrow] (enough) -- node[above, font=\scriptsize] {Không} (ask);
+    \draw[arrow] (ask.north) |- (intent.east);
+    \draw[arrow] (enough) -- node[right, font=\scriptsize] {Có} (skills);
+    \draw[arrow] (skills) -- (execute);
+    \draw[arrow] (execute) -- (api);
+    \draw[arrow] (api) -- (ok);
+    \draw[arrow] (ok) -- node[above, font=\scriptsize] {Không} (fail);
+    \draw[arrow] (ok) -- node[right, font=\scriptsize] {Có} (reply);
+    \draw[arrow] (reply) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-06: Quản lý công việc.}}
+  \label{fig:activity-uc06}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc06} cho thấy luồng quản lý công việc được thiết kế giống các tích hợp nghiệp vụ khác: Agent chịu trách nhiệm hiểu ý định, còn kỹ năng quyết định cú pháp thao tác cụ thể. Mức trừu tượng này giúp hệ thống mở rộng sang nhiều backend task mà không cần thêm nhánh điều kiện trong lõi Agent. Điểm đánh đổi là Agent phải hỏi lại khi thiếu định danh hoặc trạng thái, thay vì đoán và có thể cập nhật sai công việc.
+
+% ---- Activity UC-07 ----
+\subsection{UC-07: Luồng trích xuất \& duyệt quy trình (HITL)}
+Luồng UC-07 mô tả cơ chế phát hiện quy trình lặp trong pipeline nén ngữ cảnh và chuyển quyền kiểm soát sang người dùng trước khi lưu \texttt{SKILL.md}.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.78\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.82cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.5cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.1, inner sep=1pt, text width=3.0cm},
+      store/.style={cylinder,aspect=0.4,  shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=3.8cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth},
+      alt/.style={thick, dashed, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Compaction hoặc daily cron};
+    \node[action, below=of start] (compact) {Nén lịch sử\\và chạy profiling};
+    \node[action, below=of compact] (extract) {LLM tìm pattern lặp\\và sinh workflow draft};
+    \node[decision, below=of extract] (found) {Có workflow mới\\hợp lệ?};
+    \node[action, right=2.8cm of found] (none) {Clear consolidation state\\và tiếp tục Agent chính};
+    \node[store, below=of found] (state) {\texttt{Consolidation}\\\texttt{State}\\lưu draft + pending request};
+    \node[action, below=of state] (notify) {Gửi đề xuất cho người dùng\\giữ file chưa được ghi};
+    \node[action, below=of notify] (route) {Lượt sau định tuyến\\sang Consolidation Agent};
+    \node[decision, below=of route] (choice) {Người dùng\\chọn gì?};
+    \node[action, left=2.8cm of choice] (edit) {Yêu cầu chỉnh sửa\\draft workflow};
+    \node[action, right=2.8cm of choice] (discard) {Discard\\clear state};
+    \node[action, below=of choice] (save) {\texttt{save\_workflow}\\ghi \texttt{workflows/*}\\\texttt{/SKILL.md}};
+    \node[action, below=of save] (conclude) {\texttt{conclude}\\\texttt{\_consolidation}\\prune checkpoint};
+    \node[action, below=of conclude] (republish) {Republish pending request\\về Agent chính};
+    \node[startstop, below=of republish] (end) {Kết thúc HITL};
+
+    \draw[arrow] (start) -- (compact);
+    \draw[arrow] (compact) -- (extract);
+    \draw[arrow] (extract) -- (found);
+    \draw[arrow] (found) -- node[above, font=\scriptsize] {Không} (none);
+    \draw[arrow] (found) -- node[right, font=\scriptsize] {Có} (state);
+    \draw[arrow] (state) -- (notify);
+    \draw[arrow] (notify) -- (route);
+    \draw[arrow] (route) -- (choice);
+    \draw[alt] (choice) -- node[above, font=\scriptsize] {Sửa} (edit);
+    \draw[alt] (edit.north) |- (notify.west);
+    \draw[arrow] (choice) -- node[above, font=\scriptsize] {Từ chối} (discard);
+    \draw[arrow] (choice) -- node[right, font=\scriptsize] {Lưu} (save);
+    \draw[arrow] (save) -- (conclude);
+    \draw[arrow] (discard.south) |- (conclude.east);
+    \draw[arrow] (conclude) -- (republish);
+    \draw[arrow] (republish) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-07: Trích xuất \& duyệt quy trình (HITL).}}
+  \label{fig:activity-uc07}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc07} thể hiện rõ ranh giới Human-in-the-Loop của MiniClaw: bước phát hiện workflow chỉ tạo đề xuất trong \texttt{ConsolidationState}, chưa ghi tệp vào workspace. Thiết kế này chặn rủi ro LLM tự tạo quy trình sai hoặc nguy hiểm rồi đưa ngay vào bộ kỹ năng hoạt động. Việc prune checkpoint sau khi kết thúc consolidation giúp xóa các lượt trao đổi duyệt nháp khỏi lịch sử chính, nhờ đó Agent trở lại ngữ cảnh nghiệp vụ ban đầu.
+
+% ---- Activity UC-08 ----
+\subsection{UC-08: Luồng nạp động quy trình mới (SkillManager)}
+Luồng UC-08 mô tả cách \texttt{SkillsManager} nạp lại kỹ năng và workflow ở thời điểm Agent dựng prompt cho lượt suy luận mới.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.76\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.86cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.5cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=3.0cm},
+      store/.style={cylinder,aspect=0.4,  shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=3.0cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Lượt Agent mới};
+    \node[action, below=of start] (node) {\texttt{AgentNode}\\dựng system prompt};
+    \node[action, below=of node] (dirs) {Resolve \texttt{skills\_dirs}\\và thư mục \texttt{workflows}};
+    \node[store, below=of dirs] (scan) {Quét thư mục\\\texttt{skills/}, \texttt{workflows/}};
+    \node[action, below=of scan] (parse) {Đọc \texttt{SKILL.md}\\và parse YAML frontmatter};
+    \node[decision, below=of parse] (valid) {Tên, schema, path\\hợp lệ và chưa trùng?};
+    \node[action, right=2.9cm of valid] (skip) {Bỏ qua skill lỗi\\không làm gián đoạn Agent};
+    \node[action, below=of valid] (stats) {Kết hợp usage stats\\từ \texttt{state.json}};
+    \node[action, below=of stats] (prompt) {Sinh prompt block\\Top workflows + active skills};
+    \node[action, below=of prompt] (llm) {LLM biết path skill\\và có thể đọc khi cần};
+    \node[startstop, below=of llm] (end) {Kỹ năng sẵn sàng};
+
+    \draw[arrow] (start) -- (node);
+    \draw[arrow] (node) -- (dirs);
+    \draw[arrow] (dirs) -- (scan);
+    \draw[arrow] (scan) -- (parse);
+    \draw[arrow] (parse) -- (valid);
+    \draw[arrow] (valid) -- node[above, font=\scriptsize] {Không} (skip);
+    \draw[arrow] (valid) -- node[right, font=\scriptsize] {Có} (stats);
+    \draw[arrow] (stats) -- (prompt);
+    \draw[arrow] (prompt) -- (llm);
+    \draw[arrow] (llm) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-08: Nạp động quy trình mới (SkillManager).}}
+  \label{fig:activity-uc08}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc08} điều chỉnh mô tả nạp động theo triển khai thực tế: hệ thống không cần file watcher riêng, mà đọc lại danh mục kỹ năng khi xây dựng prompt cho lượt Agent tiếp theo. Cách này đơn giản và tránh đồng bộ phức tạp giữa watcher với phiên hội thoại đang chạy. Đổi lại, workflow mới chỉ xuất hiện từ lượt suy luận kế tiếp, không chen vào giữa một lượt LangGraph đang thực thi.
+
+% ---- Activity UC-09 ----
+\subsection{UC-09: Luồng khởi tạo hệ thống CLI}
+Luồng UC-09 mô tả wizard \texttt{miniclaw init}, dùng để tạo cấu hình ban đầu, chuẩn bị biến môi trường và sao chép bộ kỹ năng mẫu vào workspace.
+
+\begin{figure}[p]
+  \centering
+  \resizebox{!}{0.77\textheight}{
+  \begin{tikzpicture}[
+      node distance=0.86cm,
+      every node/.style={font=\small},
+      startstop/.style={ellipse, draw=black!80, fill=gray!15, thick, align=center, minimum width=3.2cm, minimum height=0.75cm},
+      action/.style={rectangle, draw=black!80, fill=white, thick, rounded corners=2pt, align=center, text width=4.5cm, minimum height=0.85cm},
+      decision/.style={diamond, draw=black!80, fill=gray!10, thick, align=center, aspect=2.0, inner sep=1pt, text width=3.0cm},
+      store/.style={cylinder,aspect=0.4,  shape border rotate=90, draw=black!80, fill=gray!10, thick, align=center, text width=3.0cm, minimum height=1.1cm},
+      arrow/.style={thick, ->, >=Stealth}
+  ]
+    \node[startstop] (start) {Admin chạy\\\texttt{miniclaw init}};
+    \node[decision, below=of start] (config) {\texttt{config.json}\\đã tồn tại?};
+    \node[action, right=2.8cm of config] (askconfig) {Hỏi overwrite\\hoặc giữ cấu hình cũ};
+    \node[action, below=of config] (defaults) {Tạo config mặc định\\và hỏi custom skill dirs};
+    \node[store, below=of defaults] (saveconfig) {Ghi\\\texttt{config.json}};
+    \node[decision, below=of saveconfig] (env) {\texttt{.env}\\đã tồn tại?};
+    \node[action, right=2.8cm of env] (askenv) {Hỏi overwrite\\hoặc giữ file cũ};
+    \node[action, below=of env] (copyenv) {Copy \texttt{env.template}\\sang \texttt{.env}};
+    \node[decision, below=of copyenv] (skills) {Template skills\\đã tồn tại?};
+    \node[action, right=2.8cm of skills] (askskills) {Hỏi overwrite\\template skills};
+    \node[action, below=of skills] (clone) {Clone template skills\\và đảm bảo skill dirs};
+    \node[action, below=of clone] (agents) {Tạo \texttt{AGENTS.md}\\nếu chưa có};
+    \node[startstop, below=of agents] (end) {Sẵn sàng chạy\\\texttt{miniclaw start}};
+
+    \draw[arrow] (start) -- (config);
+    \draw[arrow] (config) -- node[above, font=\scriptsize] {Có} (askconfig);
+    \draw[arrow] (askconfig.south) |- (defaults.east);
+    \draw[arrow] (config) -- node[right, font=\scriptsize] {Không hoặc overwrite} (defaults);
+    \draw[arrow] (defaults) -- (saveconfig);
+    \draw[arrow] (saveconfig) -- (env);
+    \draw[arrow] (env) -- node[above, font=\scriptsize] {Có} (askenv);
+    \draw[arrow] (askenv.south) |- (copyenv.east);
+    \draw[arrow] (env) -- node[right, font=\scriptsize] {Không hoặc overwrite} (copyenv);
+    \draw[arrow] (copyenv) -- (skills);
+    \draw[arrow] (skills) -- node[above, font=\scriptsize] {Có} (askskills);
+    \draw[arrow] (askskills.south) |- (clone.east);
+    \draw[arrow] (skills) -- node[right, font=\scriptsize] {Không hoặc overwrite} (clone);
+    \draw[arrow] (clone) -- (agents);
+    \draw[arrow] (agents) -- (end);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ hoạt động UC-09: Khởi tạo hệ thống CLI.}}
+  \label{fig:activity-uc09}
+\end{figure}
+\clearpage
+
+Hình \ref{fig:activity-uc09} cho thấy CLI khởi tạo ưu tiên tính an toàn khi gặp cấu hình đã tồn tại bằng cách hỏi trước khi ghi đè. Luồng này không xác thực sâu token Telegram hoặc API key tại thời điểm \texttt{init}; thay vào đó, nó chuẩn bị cấu trúc tối thiểu để người vận hành có thể chỉnh sửa file cấu hình sau. Quyết định này làm bước onboarding nhẹ hơn, nhưng đẩy phần kiểm chứng kết nối sang giai đoạn \texttt{start} và vận hành thực tế.
 
 \section{Sơ đồ trình tự (Sequence Diagram)}
-\subsection{Trình tự quy trình Xử lý yêu cầu Chat \& Lưu bộ nhớ dài hạn}
-Thể hiện tương tác thời gian giữa Telegram Channel, MessageBus, AgentLoop và MemoryManager.
+Phần này mô tả tương tác theo thời gian giữa các thành phần runtime chính của MiniClaw. Khác với sơ đồ hoạt động, sơ đồ trình tự được gom theo cơ chế phối hợp giữa các đối tượng, do đó UC-02, UC-05 và UC-06 được trình bày chung vì cùng sử dụng mẫu tích hợp \textit{skill-driven external integration}: Agent đọc kỹ năng, gọi công cụ thực thi và nhận kết quả từ dịch vụ bên ngoài.
 
-\begin{figure}[H]
+% ---- Sequence UC-01 ----
+\subsection{UC-01: Trình tự xử lý tin nhắn và vòng lặp Agent chính}
+Sơ đồ trình tự UC-01 thể hiện đường đi của một lượt hội thoại từ Telegram đến \texttt{AgentLoop}, qua \texttt{LangGraph}, \texttt{FileCheckpointSaver} và quay lại kênh phản hồi.
+
+\begin{landscape}
+\begin{figure}[p]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ trình tự xử lý Chat và Bộ nhớ dài hạn.}
-  \label{fig:sequence-chat-memory}
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.3cm},
+      core/.style={header, minimum width=2.4cm},
+      data/.style={header, minimum width=2.3cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      note/.style={rectangle, draw=blue!50, fill=blue!5, rounded corners=2pt, align=left, inner sep=8pt, font=\scriptsize, thick},
+      fragment/.style={draw=black!60, thick, rounded corners=2pt},
+      fraglabel/.style={rectangle, draw=black!60, fill=white, inner sep=2pt, font=\scriptsize}
+  ]
+    \node[actor] (user) at (0,0) {Người dùng};
+    \node[actor] (telegram) at (3,0) {\texttt{Telegram}\\\texttt{Channel}};
+    \node[core] (bus) at (6,0) {\texttt{MessageBus}};
+    \node[core] (loop) at (9,0) {\texttt{AgentLoop}};
+    \node[core] (graph) at (12,0) {\texttt{LangGraph}\\Agent};
+    \node[data] (store) at (15,0) {\texttt{Checkpoint}\\Store};
+
+    \foreach \x in {user,telegram,bus,loop,graph,store} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-10.8);
+    }
+    \draw[activation] ([xshift=-0.15cm]telegram.south |- 0,-1.3) rectangle ([xshift=0.15cm]telegram.south |- 0,-9.6);
+    \draw[activation] ([xshift=-0.15cm]bus.south |- 0,-2.1) rectangle ([xshift=0.15cm]bus.south |- 0,-8.8);
+    \draw[activation] ([xshift=-0.15cm]loop.south |- 0,-3.0) rectangle ([xshift=0.15cm]loop.south |- 0,-8.2);
+    \draw[activation] ([xshift=-0.15cm]graph.south |- 0,-4.5) rectangle ([xshift=0.15cm]graph.south |- 0,-7.2);
+    \draw[activation] ([xshift=-0.15cm]store.south |- 0,-4.0) rectangle ([xshift=0.15cm]store.south |- 0,-7.8);
+    \draw[fragment] (2.35,-1.75) rectangle (15.55,-9.15);
+    \node[fraglabel, anchor=north west] at (2.35,-1.75) {\textbf{loop} [mỗi batch tin nhắn]};
+
+    \draw[msg] (user |- 0,-1.3) -- node[above=4pt, font=\scriptsize] {1. Gửi tin nhắn} ([xshift=-0.15cm]telegram |- 0,-1.3);
+    \draw[msg] ([xshift=0.15cm]telegram |- 0,-2.1) -- node[below=4pt, font=\scriptsize] {2. \texttt{publishInbound()}} ([xshift=-0.15cm]bus |- 0,-2.1);
+    \draw[msg] ([xshift=0.15cm]bus |- 0,-3.5) -- node[above=4pt, font=\scriptsize] {3. Dispatch batch} ([xshift=-0.15cm]loop |- 0,-3.5);
+    \draw[msg] ([xshift=0.15cm]loop |- 0,-4.2) -- node[above=4pt, font=\scriptsize] {4. Load checkpoint} ([xshift=-0.15cm]store |- 0,-4.2);
+    \draw[reply] ([xshift=-0.15cm]store |- 0,-4.9) -- node[above=4pt, font=\scriptsize] {5. Lịch sử hội thoại} ([xshift=0.15cm]loop |- 0,-4.9);
+    \draw[msg] ([xshift=0.15cm]loop |- 0,-5.7) -- node[above=4pt, font=\scriptsize] {6. \texttt{compiledGraph.invoke()}} ([xshift=-0.15cm]graph |- 0,-5.7);
+    \draw[msg] ([xshift=0.15cm]graph |- 0,-6.5) -- node[above=4pt, font=\scriptsize] {7. Ghi AI/Tool messages} ([xshift=-0.15cm]store |- 0,-6.5);
+    \draw[reply] ([xshift=-0.15cm]graph |- 0,-7.2) -- node[above=4pt, font=\scriptsize] {8. Final response} ([xshift=0.15cm]loop |- 0,-7.2);
+    \draw[msg] ([xshift=-0.15cm]loop |- 0,-8.0) -- node[above=4pt, font=\scriptsize] {9. Publish outbound} ([xshift=0.15cm]bus |- 0,-8.0);
+    \draw[msg] ([xshift=-0.15cm]bus |- 0,-8.8) -- node[above=4pt, font=\scriptsize] {10. Gửi Telegram API} ([xshift=0.15cm]telegram |- 0,-8.8);
+    \draw[reply] ([xshift=-0.15cm]telegram |- 0,-9.6) -- node[above=4pt, font=\scriptsize] {11. Phản hồi} (user |- 0,-9.6);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-01: Xử lý tin nhắn và vòng lặp Agent chính.}}
+  \label{fig:sequence-uc01-agent-loop}
 \end{figure}
+\end{landscape}
+\clearpage
 
-\subsection{Trình tự quy trình trích xuất và duyệt quy trình (Reusable Workflow Extraction)}
-Mô tả tương tác giữa các lớp điều khiển khi tiến hành ghi tệp quy trình mới và cắt tỉa lịch sử hội thoại.
+Hình \ref{fig:sequence-uc01-agent-loop} cho thấy \texttt{MessageBus} không chỉ là hàng đợi chuyển tiếp mà còn là điểm điều hòa nhịp xử lý giữa giao diện Telegram và Agent. Việc nạp checkpoint trước khi gọi \texttt{compiledGraph.invoke()} giúp mỗi lượt suy luận có đầy đủ ngữ cảnh, nhưng làm chi phí I/O trở thành một phần cố định của đường phản hồi. Thiết kế này ưu tiên tính nhất quán hội thoại hơn độ trễ tối thiểu.
 
-\begin{figure}[H]
+% ---- Sequence UC-02 UC-05 UC-06 ----
+\subsection{UC-02, UC-05, UC-06: Trình tự tích hợp nghiệp vụ qua kỹ năng}
+UC-02, UC-05 và UC-06 cùng dùng một mẫu tương tác: Agent phát hiện ý định, đọc kỹ năng liên quan, tạo lệnh an toàn và gọi dịch vụ ngoài thông qua công cụ thực thi.
+
+\begin{landscape}
+\begin{figure}[p]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Sơ đồ trình tự trích xuất và duyệt quy trình.}
-  \label{fig:sequence-extraction}
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.4cm},
+      core/.style={header, minimum width=2.4cm},
+      data/.style={header, minimum width=2.3cm},
+      external/.style={header, minimum width=2.6cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      note/.style={rectangle, draw=blue!50, fill=blue!5, rounded corners=2pt, align=left, inner sep=8pt, font=\scriptsize, thick}
+  ]
+    \node[actor] (user) at (0,0) {Người dùng};
+    \node[core] (agent) at (3,0) {\texttt{Agent}\\Node};
+    \node[core] (skills) at (6,0) {\texttt{Skills}\\Tools};
+    \node[data] (files) at (9,0) {\texttt{SKILL.md}\\Catalog};
+    \node[core] (exec) at (12,0) {\texttt{execute}\\Tool};
+    \node[external] (svc) at (15,0) {Calendar/Mail/\\Task Service};
+
+    \foreach \x in {user,agent,skills,files,exec,svc} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-10.4);
+    }
+    \draw[activation] ([xshift=-0.15cm]agent.south |- 0,-1.3) rectangle ([xshift=0.15cm]agent.south |- 0,-9.8);
+    \draw[activation] ([xshift=-0.15cm]skills.south |- 0,-2.2) rectangle ([xshift=0.15cm]skills.south |- 0,-4.8);
+    \draw[activation] ([xshift=-0.15cm]files.south |- 0,-3.2) rectangle ([xshift=0.15cm]files.south |- 0,-6.4);
+    \draw[activation] ([xshift=-0.15cm]exec.south |- 0,-7.1) rectangle ([xshift=0.15cm]exec.south |- 0,-9.0);
+    \draw[activation] ([xshift=-0.15cm]svc.south |- 0,-7.7) rectangle ([xshift=0.15cm]svc.south |- 0,-8.4);
+
+    \draw[msg] (user |- 0,-1.3) -- node[above=4pt, font=\scriptsize] {1. Yêu cầu lịch/mail/task} ([xshift=-0.15cm]agent |- 0,-1.3);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-2.2) -- node[above=4pt, font=\scriptsize] {2. \texttt{search\_skills()}} ([xshift=-0.15cm]skills |- 0,-2.2);
+    \draw[msg] ([xshift=0.15cm]skills |- 0,-3.2) -- node[above=4pt, font=\scriptsize] {3. Quét metadata} ([xshift=-0.15cm]files |- 0,-3.2);
+    \draw[reply] ([xshift=-0.15cm]files |- 0,-4.0) -- node[above=4pt, font=\scriptsize] {4. Skill phù hợp} ([xshift=0.15cm]skills |- 0,-4.0);
+    \draw[reply] ([xshift=-0.15cm]skills |- 0,-4.8) -- node[above=4pt, font=\scriptsize] {5. Đường dẫn skill} ([xshift=0.15cm]agent |- 0,-4.8);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-5.6) -- node[above=4pt, font=\scriptsize] {6. \texttt{read\_file(SKILL.md)}} ([xshift=-0.15cm]files |- 0,-5.6);
+    \draw[reply] ([xshift=-0.15cm]files |- 0,-6.4) -- node[above=4pt, font=\scriptsize] {7. Hướng dẫn CLI/API} ([xshift=0.15cm]agent |- 0,-6.4);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-7.2) -- node[above=4pt, font=\scriptsize] {8. Lệnh đã chuẩn hóa} ([xshift=-0.15cm]exec |- 0,-7.2);
+    \draw[msg] ([xshift=0.15cm]exec |- 0,-7.8) -- node[above=4pt, font=\scriptsize] {9. API/CLI request} ([xshift=-0.15cm]svc |- 0,-7.8);
+    \draw[reply] ([xshift=-0.15cm]svc |- 0,-8.4) -- node[above=4pt, font=\scriptsize] {10. Kết quả nghiệp vụ} ([xshift=0.15cm]exec |- 0,-8.4);
+    \draw[reply] ([xshift=-0.15cm]exec |- 0,-9.0) -- node[above=4pt, font=\scriptsize] {11. stdout/stderr} ([xshift=0.15cm]agent |- 0,-9.0);
+    \draw[reply] ([xshift=-0.15cm]agent |- 0,-9.8) -- node[above=4pt, font=\scriptsize] {12. Tóm tắt hoặc xác nhận} (user |- 0,-9.8);
+    \node[note, anchor=west] at (3.25,-9.9) {Thao tác gửi/xóa/cập nhật có thể\\yêu cầu xác nhận trước khi thực thi.};
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-02/UC-05/UC-06: Tích hợp nghiệp vụ qua kỹ năng.}}
+  \label{fig:sequence-uc02-uc05-uc06-skills}
 \end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc02-uc05-uc06-skills} gom ba use case nghiệp vụ vì điểm quan trọng không nằm ở từng API riêng lẻ, mà ở cơ chế tách tri thức thao tác khỏi lõi Agent. Cách này giúp MiniClaw thay đổi Calendar, Mail hoặc Task backend bằng cách cập nhật \texttt{SKILL.md}, thay vì sửa logic điều phối. Đổi lại, chất lượng thực thi phụ thuộc vào việc Agent chọn đúng kỹ năng và diễn dịch đúng hướng dẫn CLI.
+
+% ---- Sequence UC-03 ----
+\subsection{UC-03: Trình tự thiết lập nhắc nhở cục bộ}
+Sơ đồ trình tự UC-03 mô tả cách yêu cầu nhắc nhở được chuyển thành bản ghi trong \texttt{reminders.json} và được đăng ký timer nội bộ.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.4cm},
+      core/.style={header, minimum width=2.5cm},
+      data/.style={header, minimum width=2.4cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      dataact/.style={active},
+      fragment/.style={draw=black!60, thick, rounded corners=2pt},
+      fraglabel/.style={rectangle, draw=black!60, fill=white, inner sep=2pt, font=\scriptsize}
+  ]
+    \node[actor] (user) at (0,0) {Người dùng};
+    \node[core] (agent) at (3.2,0) {\texttt{Agent}\\Node};
+    \node[core] (tool) at (6.4,0) {\texttt{manage}\\\texttt{\_reminders}};
+    \node[core] (scheduler) at (9.6,0) {\texttt{Task}\\\texttt{Scheduler}};
+    \node[data] (json) at (12.8,0) {\texttt{reminders}\\\texttt{.json}};
+
+    \foreach \x in {user,agent,tool,scheduler,json} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-9.6);
+    }
+    \draw[activation] ([xshift=-0.15cm]agent.south |- 0,-1.3) rectangle ([xshift=0.15cm]agent.south |- 0,-8.5);
+    \draw[activation] ([xshift=-0.15cm]tool.south |- 0,-2.5) rectangle ([xshift=0.15cm]tool.south |- 0,-7.5);
+    \draw[activation] ([xshift=-0.15cm]scheduler.south |- 0,-4.8) rectangle ([xshift=0.15cm]scheduler.south |- 0,-6.8);
+    \draw[dataact] ([xshift=-0.15cm]json.south |- 0,-3.4) rectangle ([xshift=0.15cm]json.south |- 0,-5.7);
+
+    \draw[msg] (user |- 0,-1.3) -- node[above=4pt, font=\scriptsize] {1. Đặt nhắc nhở} ([xshift=-0.15cm]agent |- 0,-1.3);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-2.2) -- node[above=4pt, font=\scriptsize] {2. Chuẩn hóa thời gian ISO} ++(0.9,0) -- ++(0,-0.45) -- ++(-0.9,0);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-2.9) -- node[above=4pt, font=\scriptsize] {3. \texttt{create(title,targetTime)}} ([xshift=-0.15cm]tool |- 0,-2.9);
+    \draw[msg] ([xshift=0.15cm]tool |- 0,-3.8) -- node[above=4pt, font=\scriptsize] {4. Load reminders} ([xshift=-0.15cm]json |- 0,-3.8);
+    \draw[reply] ([xshift=-0.15cm]json |- 0,-4.6) -- node[above=4pt, font=\scriptsize] {5. Danh sách hiện tại} ([xshift=0.15cm]tool |- 0,-4.6);
+    \draw[msg] ([xshift=0.15cm]tool |- 0,-5.3) -- node[above=4pt, font=\scriptsize] {6. Ghi bản ghi pending} ([xshift=-0.15cm]json |- 0,-5.3);
+    \draw[msg] ([xshift=0.15cm]tool |- 0,-6.1) -- node[above=4pt, font=\scriptsize] {7. \texttt{scheduleReminder()}} ([xshift=-0.15cm]scheduler |- 0,-6.1);
+    \draw[reply] ([xshift=-0.15cm]scheduler |- 0,-6.8) -- node[above=4pt, font=\scriptsize] {8. Timer đã đăng ký} ([xshift=0.15cm]tool |- 0,-6.8);
+    \draw[reply] ([xshift=-0.15cm]tool |- 0,-7.5) -- node[above=4pt, font=\scriptsize] {9. ID + thời điểm kích hoạt} ([xshift=0.15cm]agent |- 0,-7.5);
+    \draw[reply] ([xshift=-0.15cm]agent |- 0,-8.5) -- node[above=4pt, font=\scriptsize] {10. Xác nhận} (user |- 0,-8.5);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-03: Thiết lập nhắc nhở cục bộ.}}
+  \label{fig:sequence-uc03-reminder-create}
+\end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc03-reminder-create} thể hiện lựa chọn lưu nhắc nhở vào tệp cục bộ trước khi đăng ký timer. Thứ tự này giúp hệ thống có thể phục hồi nhắc nhở sau khi tiến trình khởi động lại, thay vì phụ thuộc hoàn toàn vào timer đang nằm trong bộ nhớ. Điểm đánh đổi là thao tác tạo nhắc nhở phải đi qua I/O tệp, nhưng chi phí này nhỏ so với độ bền trạng thái nhận được.
+
+% ---- Sequence UC-04 ----
+\subsection{UC-04: Trình tự kích hoạt nhắc nhở bởi Scheduler}
+Sơ đồ trình tự UC-04 thể hiện nhánh runtime khi \texttt{TaskScheduler} tự kích hoạt nhắc nhở và gửi thông báo mà không gọi lại LLM.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.4cm},
+      core/.style={header, minimum width=2.5cm},
+      data/.style={header, minimum width=2.4cm},
+      alert/.style={header, minimum width=2.4cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      dataact/.style={active},
+      fragment/.style={draw=black!60, thick, rounded corners=2pt},
+      fraglabel/.style={rectangle, draw=black!60, fill=white, inner sep=2pt, font=\scriptsize}
+  ]
+    \node[core] (timer) at (0,0) {\texttt{setTimeout}\\Timer};
+    \node[core] (scheduler) at (3,0) {\texttt{Task}\\\texttt{Scheduler}};
+    \node[data] (json) at (6,0) {\texttt{reminders}\\\texttt{.json}};
+    \node[data] (checkpoint) at (9,0) {\texttt{Checkpoint}\\Store};
+    \node[core] (bus) at (12,0) {\texttt{MessageBus}};
+    \node[actor] (telegram) at (15,0) {\texttt{Telegram}\\Channel};
+
+    \foreach \x in {timer,scheduler,json,checkpoint,bus,telegram} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-9.8);
+    }
+    \draw[activation] ([xshift=-0.15cm]scheduler.south |- 0,-1.4) rectangle ([xshift=0.15cm]scheduler.south |- 0,-8.0);
+    \draw[dataact] ([xshift=-0.15cm]json.south |- 0,-2.5) rectangle ([xshift=0.15cm]json.south |- 0,-4.6);
+    \draw[dataact] ([xshift=-0.15cm]checkpoint.south |- 0,-5.2) rectangle ([xshift=0.15cm]checkpoint.south |- 0,-6.2);
+    \draw[activation] ([xshift=-0.15cm]bus.south |- 0,-6.8) rectangle ([xshift=0.15cm]bus.south |- 0,-7.8);
+
+    \draw[msg] (timer |- 0,-1.4) -- node[above=4pt, font=\scriptsize] {1. Hết thời gian} ([xshift=-0.15cm]scheduler |- 0,-1.4);
+    \draw[msg] ([xshift=0.15cm]scheduler |- 0,-2.5) -- node[above=4pt, font=\scriptsize] {2. Load reminder} ([xshift=-0.15cm]json |- 0,-2.5);
+    \draw[reply] ([xshift=-0.15cm]json |- 0,-3.3) -- node[above=4pt, font=\scriptsize] {3. Pending record} ([xshift=0.15cm]scheduler |- 0,-3.3);
+    \draw[msg] ([xshift=0.15cm]scheduler |- 0,-4.1) -- node[above=4pt, font=\scriptsize] {4. Mark \texttt{fired/missed}} ([xshift=-0.15cm]json |- 0,-4.1);
+    \draw[msg] ([xshift=0.15cm]scheduler |- 0,-5.3) -- node[above=4pt, font=\scriptsize] {5. Append \texttt{SystemMessage}} ([xshift=-0.15cm]checkpoint |- 0,-5.3);
+    \draw[reply] ([xshift=-0.15cm]checkpoint |- 0,-6.1) -- node[above=4pt, font=\scriptsize] {6. Checkpoint saved} ([xshift=0.15cm]scheduler |- 0,-6.1);
+    \draw[msg] ([xshift=0.15cm]scheduler |- 0,-7.0) -- node[above=4pt, font=\scriptsize] {7. Publish outbound trực tiếp} ([xshift=-0.15cm]bus |- 0,-7.0);
+    \draw[msg] ([xshift=0.15cm]bus |- 0,-7.8) -- node[above=4pt, font=\scriptsize] {8. Gửi thông báo} (telegram |- 0,-7.8);
+    \draw[reply] (telegram |- 0,-8.7) -- node[above=4pt, font=\scriptsize] {9. Người dùng nhận nhắc nhở} (timer |- 0,-8.7);
+    \node[alert, anchor=west, font=\scriptsize] at (6.4,-9.35) {LLM/AgentLoop bị bỏ qua để giảm độ trễ và tránh biến đổi nội dung nhắc nhở.};
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-04: Scheduler kích hoạt nhắc nhở.}}
+  \label{fig:sequence-uc04-scheduler-trigger}
+\end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc04-scheduler-trigger} cho thấy thông báo nhắc nhở là một luồng outbound chương trình, không phải một lượt hội thoại cần suy luận. Thiết kế bỏ qua \texttt{AgentLoop} giúp reminder được gửi nhanh và ổn định hơn, đồng thời tránh nguy cơ LLM diễn giải lại nội dung nhắc nhở. Việc vẫn append \texttt{SystemMessage} vào checkpoint giữ cho lịch sử hội thoại biết rằng nhắc nhở đã được phát.
+
+% ---- Sequence UC-07 ----
+\subsection{UC-07: Trình tự trích xuất và duyệt quy trình HITL}
+Sơ đồ trình tự UC-07 mô tả quá trình phát hiện workflow lặp, lưu bản nháp vào \texttt{ConsolidationState}, duyệt bởi người dùng và trả quyền điều khiển về Agent chính.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.4cm},
+      core/.style={header, minimum width=2.5cm},
+      data/.style={header, minimum width=2.4cm},
+      alert/.style={header, minimum width=2.6cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      dataact/.style={active},
+      fragment/.style={draw=black!60, thick, rounded corners=2pt},
+      fraglabel/.style={rectangle, draw=black!60, fill=white, inner sep=2pt, font=\scriptsize}
+  ]
+    \node[core] (compact) at (0,0) {\texttt{Compaction}\\Manager};
+    \node[data] (state) at (3.2,0) {\texttt{State}\\Manager};
+    \node[actor] (user) at (6.4,0) {Người dùng};
+    \node[alert] (cagent) at (9.8,0) {\texttt{Consolidation}\\Agent};
+    \node[data] (skills) at (13.2,0) {\texttt{workflows/}\\\texttt{SKILL.md}};
+    \node[core] (bus) at (16.4,0) {\texttt{MessageBus}};
+
+    \foreach \x in {compact,state,user,cagent,skills,bus} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-12.2);
+    }
+    \draw[activation] ([xshift=-0.15cm]compact.south |- 0,-1.2) rectangle ([xshift=0.15cm]compact.south |- 0,-3.8);
+    \draw[dataact] ([xshift=-0.15cm]state.south |- 0,-2.6) rectangle ([xshift=0.15cm]state.south |- 0,-9.4);
+    \draw[activation] ([xshift=-0.15cm]cagent.south |- 0,-5.2) rectangle ([xshift=0.15cm]cagent.south |- 0,-9.8);
+    \draw[dataact] ([xshift=-0.15cm]skills.south |- 0,-7.0) rectangle ([xshift=0.15cm]skills.south |- 0,-7.8);
+    \draw[fragment] (-0.45,-4.45) rectangle (16.95,-10.95);
+    \draw[black!60, thick] (-0.45,-10.25) -- (16.95,-10.25);
+    \node[fraglabel, anchor=north west] at (-0.45,-4.45) {\textbf{alt} [người dùng lưu workflow]};
+    \node[fraglabel, anchor=north west] at (-0.45,-10.25) {\textbf{else} [từ chối/chỉnh sửa]};
+    \node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at (3.1,-10.62) {Không ghi workflow mới; cập nhật hoặc hủy draft.};
+
+    \draw[msg] ([xshift=0.15cm]compact |- 0,-1.4) -- ++(1.45,0) -- ++(0,-0.45) -- ++(-1.45,0);
+    \node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at ([xshift=0.05cm]compact |- 0,-1.22) {1. Profiling context};
+    \draw[msg] ([xshift=0.15cm]compact |- 0,-2.2) -- ++(1.45,0) -- ++(0,-0.45) -- ++(-1.45,0);
+    \node[font=\scriptsize, anchor=west, fill=white, inner sep=1pt] at ([xshift=0.05cm]compact |- 0,-2.02) {2. Sinh draft};
+    \draw[msg] ([xshift=0.15cm]compact |- 0,-3.0) -- node[above=4pt, font=\scriptsize] {3. Lưu draft HITL} ([xshift=-0.15cm]state |- 0,-3.0);
+    \draw[msg] ([xshift=0.15cm]compact |- 0,-3.6) -- node[above=4pt, font=\scriptsize] {4. Gửi đề xuất duyệt} (user |- 0,-3.6);
+    \draw[msg] (user |- 0,-4.8) -- node[above=4pt, font=\scriptsize] {5. Duyệt/sửa/lưu} (bus |- 0,-4.8);
+    \draw[msg] (bus |- 0,-5.5) -- node[above=4pt, font=\scriptsize] {6. Route consolidation} ([xshift=-0.15cm]cagent |- 0,-5.5);
+    \draw[msg] ([xshift=-0.15cm]cagent |- 0,-6.3) -- node[above=4pt, font=\scriptsize] {7. \texttt{getConsolidationState()}} ([xshift=0.15cm]state |- 0,-6.3);
+    \draw[reply] ([xshift=0.15cm]state |- 0,-6.9) -- node[above=4pt, font=\scriptsize] {8. Draft + pending request} ([xshift=-0.15cm]cagent |- 0,-6.9);
+    \draw[msg] ([xshift=0.15cm]cagent |- 0,-7.5) -- node[above=4pt, font=\scriptsize] {9. \texttt{save\_workflow}} ([xshift=-0.15cm]skills |- 0,-7.5);
+    \draw[msg] ([xshift=-0.15cm]cagent |- 0,-8.3) -- node[above=4pt, font=\scriptsize] {10. \texttt{conclude\_consolidation}} ([xshift=0.15cm]state |- 0,-8.3);
+    \draw[msg] ([xshift=0.15cm]state |- 0,-9.1) -- node[above=4pt, font=\scriptsize] {11. Clear state + prune checkpoint} ++(0.9,0) -- ++(0,-0.45) -- ++(-0.9,0);
+    \draw[msg] ([xshift=0.15cm]cagent |- 0,-9.8) -- node[above=4pt, font=\scriptsize] {12. Republish pending request} (bus |- 0,-9.8);
+    \draw[reply] (bus |- 0,-11.5) -- node[above=4pt, font=\scriptsize] {13. Trả về Agent chính} (compact |- 0,-11.5);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-07: Trích xuất và duyệt quy trình HITL.}}
+  \label{fig:sequence-uc07-hitl-consolidation}
+\end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc07-hitl-consolidation} nhấn mạnh ranh giới an toàn của cơ chế HITL: bản nháp workflow được lưu trong \texttt{ConsolidationState} trước, chưa trở thành kỹ năng hoạt động. Chỉ sau khi người dùng xác nhận, \texttt{save\_workflow} mới ghi \texttt{SKILL.md} vào thư mục workflow. Việc republish yêu cầu đang chờ giúp Agent chính tiếp tục nhiệm vụ ban đầu sau khi luồng duyệt kết thúc, thay vì làm mất ngữ cảnh nghiệp vụ.
+
+% ---- Sequence UC-08 ----
+\subsection{UC-08: Trình tự nạp động kỹ năng và workflow}
+Sơ đồ trình tự UC-08 mô tả cách \texttt{AgentNode} nạp lại danh mục skills/workflows khi dựng system prompt cho lượt suy luận mới.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      core/.style={header, minimum width=2.5cm},
+      data/.style={header, minimum width=2.4cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      dataact/.style={active}
+  ]
+    \node[core] (loop) at (0,0) {\texttt{AgentLoop}};
+    \node[core] (agent) at (3,0) {\texttt{Agent}\\Node};
+    \node[core] (manager) at (6,0) {\texttt{Skills}\\Manager};
+    \node[data] (dirs) at (9,0) {\texttt{skills/}\\\texttt{workflows/}};
+    \node[data] (state) at (12,0) {\texttt{state.json}\\Usage stats};
+    \node[core] (llm) at (15,0) {\texttt{LLM}\\Prompt};
+
+    \foreach \x in {loop,agent,manager,dirs,state,llm} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-9.8);
+    }
+    \draw[activation] ([xshift=-0.15cm]agent.south |- 0,-1.4) rectangle ([xshift=0.15cm]agent.south |- 0,-8.4);
+    \draw[activation] ([xshift=-0.15cm]manager.south |- 0,-2.3) rectangle ([xshift=0.15cm]manager.south |- 0,-7.7);
+    \draw[dataact] ([xshift=-0.15cm]dirs.south |- 0,-3.0) rectangle ([xshift=0.15cm]dirs.south |- 0,-5.5);
+    \draw[dataact] ([xshift=-0.15cm]state.south |- 0,-5.9) rectangle ([xshift=0.15cm]state.south |- 0,-7.0);
+
+    \draw[msg] (loop |- 0,-1.4) -- node[above=4pt, font=\scriptsize] {1. Bắt đầu lượt Agent mới} ([xshift=-0.15cm]agent |- 0,-1.4);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-2.3) -- node[above=4pt, font=\scriptsize] {2. \texttt{loadSkills(skills\_dirs)}} ([xshift=-0.15cm]manager |- 0,-2.3);
+    \draw[msg] ([xshift=0.15cm]manager |- 0,-3.1) -- node[above=4pt, font=\scriptsize] {3. Quét thư mục} ([xshift=-0.15cm]dirs |- 0,-3.1);
+    \draw[reply] ([xshift=-0.15cm]dirs |- 0,-3.9) -- node[above=4pt, font=\scriptsize] {4. Danh sách \texttt{SKILL.md}} ([xshift=0.15cm]manager |- 0,-3.9);
+    \draw[msg] ([xshift=0.15cm]manager |- 0,-4.7) -- node[above=4pt, font=\scriptsize] {5. Parse YAML frontmatter} ([xshift=-0.15cm]dirs |- 0,-4.7);
+    \draw[reply] ([xshift=-0.15cm]dirs |- 0,-5.5) -- node[above=4pt, font=\scriptsize] {6. Metadata hợp lệ} ([xshift=0.15cm]manager |- 0,-5.5);
+    \draw[msg] ([xshift=0.15cm]manager |- 0,-6.3) -- node[above=4pt, font=\scriptsize] {7. Load usage stats} ([xshift=-0.15cm]state |- 0,-6.3);
+    \draw[reply] ([xshift=-0.15cm]state |- 0,-7.0) -- node[above=4pt, font=\scriptsize] {8. Tần suất sử dụng} ([xshift=0.15cm]manager |- 0,-7.0);
+    \draw[reply] ([xshift=-0.15cm]manager |- 0,-7.7) -- node[above=4pt, font=\scriptsize] {9. Prompt block skills/workflows} ([xshift=0.15cm]agent |- 0,-7.7);
+    \draw[msg] ([xshift=0.15cm]agent |- 0,-8.4) -- node[above=4pt, font=\scriptsize] {10. System prompt hoàn chỉnh} (llm |- 0,-8.4);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-08: Nạp động kỹ năng và workflow.}}
+  \label{fig:sequence-uc08-dynamic-skills}
+\end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc08-dynamic-skills} cho thấy MiniClaw nạp động kỹ năng theo thời điểm dựng prompt, thay vì duy trì một file watcher riêng. Quyết định này làm kiến trúc đơn giản hơn và tránh trạng thái cache bị lệch khi workflow thay đổi trong lúc Agent đang chạy. Điểm đánh đổi là kỹ năng mới chỉ có hiệu lực ở lượt suy luận kế tiếp, không chen vào giữa một lượt đang thực thi.
+
+% ---- Sequence UC-09 ----
+\subsection{UC-09: Trình tự khởi tạo hệ thống CLI}
+Sơ đồ trình tự UC-09 mô tả wizard khởi tạo CLI, bao gồm cấu hình workspace, tệp môi trường và sao chép bộ kỹ năng mẫu.
+
+\begin{landscape}
+\begin{figure}[p]
+  \centering
+  \resizebox{0.96\linewidth}{!}{
+  \begin{tikzpicture}[
+      every node/.style={font=\small},
+      header/.style={rectangle, draw=black!80, fill=black!5, thick, rounded corners=2pt, minimum height=1.15cm, align=center, font=\small},
+      actor/.style={header, minimum width=2.4cm},
+      core/.style={header, minimum width=2.5cm},
+      data/.style={header, minimum width=2.4cm},
+      msg/.style={thick, ->, >=stealth, font=\scriptsize},
+      reply/.style={thick, dashed, ->, >=stealth, font=\scriptsize},
+      active/.style={rectangle, fill=gray!15, draw=black!70, thick},
+      activation/.style={active},
+      dataact/.style={active}
+  ]
+    \node[actor] (admin) at (0,0) {Admin};
+    \node[core] (cli) at (3,0) {\texttt{miniclaw}\\CLI};
+    \node[core] (loader) at (6,0) {\texttt{Config}\\Loader};
+    \node[data] (config) at (9,0) {\texttt{config.json}\\\texttt{.env}};
+    \node[core] (skills) at (12,0) {\texttt{Skills}\\Manager};
+    \node[data] (template) at (15,0) {Template\\Skills};
+
+    \foreach \x in {admin,cli,loader,config,skills,template} {
+      \draw[dashed, gray!80, thick] (\x.south) -- ++(0,-10.2);
+    }
+    \draw[activation] ([xshift=-0.15cm]cli.south |- 0,-1.2) rectangle ([xshift=0.15cm]cli.south |- 0,-9.3);
+    \draw[activation] ([xshift=-0.15cm]loader.south |- 0,-2.7) rectangle ([xshift=0.15cm]loader.south |- 0,-5.3);
+    \draw[dataact] ([xshift=-0.15cm]config.south |- 0,-3.4) rectangle ([xshift=0.15cm]config.south |- 0,-6.1);
+    \draw[activation] ([xshift=-0.15cm]skills.south |- 0,-6.9) rectangle ([xshift=0.15cm]skills.south |- 0,-8.5);
+    \draw[dataact] ([xshift=-0.15cm]template.south |- 0,-7.4) rectangle ([xshift=0.15cm]template.south |- 0,-8.0);
+
+    \draw[msg] (admin |- 0,-1.2) -- node[above=4pt, font=\scriptsize] {1. Chạy \texttt{miniclaw init}} ([xshift=-0.15cm]cli |- 0,-1.2);
+    \draw[msg] ([xshift=-0.15cm]cli |- 0,-2.0) -- node[above=4pt, font=\scriptsize] {2. Hỏi workspace và tùy chọn ghi đè} (admin |- 0,-2.0);
+    \draw[reply] (admin |- 0,-2.7) -- node[above=4pt, font=\scriptsize] {3. Cấu hình nhập vào} ([xshift=-0.15cm]cli |- 0,-2.7);
+    \draw[msg] ([xshift=0.15cm]cli |- 0,-3.4) -- node[above=4pt, font=\scriptsize] {4. Load cấu hình hiện có} ([xshift=-0.15cm]loader |- 0,-3.4);
+    \draw[msg] ([xshift=0.15cm]loader |- 0,-4.2) -- node[above=4pt, font=\scriptsize] {5. Đọc \texttt{config.json}/\texttt{.env}} ([xshift=-0.15cm]config |- 0,-4.2);
+    \draw[reply] ([xshift=-0.15cm]config |- 0,-5.0) -- node[above=4pt, font=\scriptsize] {6. Giá trị cũ hoặc rỗng} ([xshift=0.15cm]loader |- 0,-5.0);
+    \draw[msg] ([xshift=0.15cm]cli |- 0,-5.9) -- node[above=4pt, font=\scriptsize] {7. Ghi cấu hình mới} ([xshift=-0.15cm]config |- 0,-5.9);
+    \draw[msg] ([xshift=0.15cm]cli |- 0,-7.1) -- node[above=4pt, font=\scriptsize] {8. \texttt{cloneTemplateSkills()}} ([xshift=-0.15cm]skills |- 0,-7.1);
+    \draw[msg] ([xshift=0.15cm]skills |- 0,-7.8) -- node[above=4pt, font=\scriptsize] {9. Sao chép bộ kỹ năng mẫu} ([xshift=-0.15cm]template |- 0,-7.8);
+    \draw[reply] ([xshift=-0.15cm]skills |- 0,-8.5) -- node[above=4pt, font=\scriptsize] {10. Số file đã sao chép} ([xshift=0.15cm]cli |- 0,-8.5);
+    \draw[reply] ([xshift=-0.15cm]cli |- 0,-9.3) -- node[above=4pt, font=\scriptsize] {11. Thông báo sẵn sàng} (admin |- 0,-9.3);
+  \end{tikzpicture}
+  }
+  \caption{\emph{Sơ đồ trình tự UC-09: Khởi tạo hệ thống CLI.}}
+  \label{fig:sequence-uc09-cli-init}
+\end{figure}
+\end{landscape}
+\clearpage
+
+Hình \ref{fig:sequence-uc09-cli-init} cho thấy luồng khởi tạo tách rõ phần thu thập lựa chọn, ghi cấu hình và sao chép kỹ năng mẫu. Việc hỏi trước khi ghi đè giúp tránh phá cấu hình đang hoạt động, đặc biệt với các workspace đã từng chạy MiniClaw. Đổi lại, \texttt{init} chỉ đảm bảo cấu trúc vận hành tối thiểu; xác thực sâu token và kết nối dịch vụ được đẩy sang giai đoạn chạy thực tế.
 
 \section{Thiết kế sơ đồ thực thể - quan hệ (ERD) và Class Diagram}
 \subsection{Sơ đồ thực thể - quan hệ logic (Logical ERD)}
@@ -179,4 +1318,3 @@ Kịch bản bot Telegram gửi tin nhắn cảnh báo từ chối thực thi kh
   \caption{Ảnh chụp giao diện cảnh báo vi phạm bảo mật.}
   \label{fig:screenshot-security-alert}
 \end{figure}
-
