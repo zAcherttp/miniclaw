@@ -1,7 +1,7 @@
 # HƯỚNG DẪN ĐỊNH DẠNG TRÌNH BÀY ĐỒ ÁN, KHÓA LUẬN TỐT NGHIỆP
 ## ĐẠI HỌC QUỐC GIA TP. HỒ CHÍ MINH - TRƯỜNG ĐẠI HỌC CÔNG NGHỆ THÔNG TIN
 
-Khóa Luận, Đồ án là tên thường gọi của khóa luận, Đồ án tốt nghiệp của sinh viên các ngành khối kỹ thuật – công nghệ, hội đủ các điều kiện theo quy định; và được bảo vệ trước hội đồng chấm do Hiệu trưởng ra quyết định thành lập.
+Khóa Luận, Đồ án là tên thường gọi của khóa luận, Đồ án tốt nghiệp của sinh viên các ngành khối kỹ thuật - công nghệ, hội đủ các điều kiện theo quy định; và được bảo vệ trước hội đồng chấm do Hiệu trưởng ra quyết định thành lập.
 
 Để thống nhất cách trình bày đồ án, Khóa luận tốt nghiệp, nhà trường hướng dẫn một số vấn đề khi viết và trình bày như sau:
 

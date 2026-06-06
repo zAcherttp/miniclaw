@@ -12,8 +12,8 @@
 \setotherlanguage{english}
 
 \setmainfont{Times New Roman}
-\setsansfont{Arial}
-\setmonofont{Consolas}
+\setsansfont{Helvetica World}
+\setmonofont{Courier Prime}
 
 \RequirePackage{unicode-math}
 \setmathfont{Latin Modern Math}
