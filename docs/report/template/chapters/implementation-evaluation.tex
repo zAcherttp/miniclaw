@@ -2,66 +2,185 @@
 \label{chap:implementation-evaluation}
 
 \section{Môi trường cài đặt và cấu hình hệ thống}
-Hệ thống được phát triển và kiểm thử trên môi trường sử dụng Node.js v20+, TypeScript v5.4, chạy trên máy chủ cá nhân cục bộ. Các cấu hình khóa bảo mật và đường dẫn được quản lý tách biệt qua tệp biến môi trường \texttt{.env}.
+MiniClaw hướng đến mô hình trợ lý cá nhân chạy trên máy cục bộ, vì vậy quy trình cài đặt cần đủ đơn giản để người dùng có thể tự triển khai mà không cần hạ tầng máy chủ riêng. Môi trường tối thiểu gồm Node.js v20 trở lên, npm, Git và một terminal có quyền truy cập Internet để tải dependency, xác thực Telegram Bot và đăng nhập các công cụ tích hợp bên ngoài \cite{nodejsDocs}. Hệ thống có thể chạy với mô hình cục bộ qua Ollama hoặc mô hình đám mây thông qua cấu hình model tương ứng \cite{ollamaDocs}.
 
-\section{Chi tiết cài đặt các thành phần chính}
-\subsection{Agent Execution Engine (LangGraph routing)}
-Sử dụng thư viện LangGraph để định hình đồ thị trạng thái Agent, thực thi các liên kết và chuyển đổi ngữ cảnh hội thoại linh hoạt.
-\subsection{Context Engineering Pipeline \& Scheduler Daemon}
-Tích hợp hàng đợi bất đồng bộ của MessageBus để quản lý tin nhắn và triển khai TaskScheduler chạy nền điều phối hẹn giờ sự kiện nhắc nhở.
-\subsection{Dynamic Skill System (SKILL.md loader)}
-Triển khai bộ phân tích cú pháp tệp markdown để tự động phân tích cấu trúc kỹ năng, nạp vào bộ nhớ ngữ cảnh của tác nhân khi kích hoạt.
-\subsection{Security Boundary (resolveSecurePath, whitelist model)}
-Hiện thực hóa các thuật toán chuẩn hóa đường dẫn và kiểm tra danh sách trắng các câu lệnh hệ thống được phép chạy.
+Các thông tin nhạy cảm như token Telegram và khóa truy cập mô hình không ghi trực tiếp vào mã nguồn. MiniClaw tách chúng vào tệp \texttt{.env} trong thư mục cấu hình người dùng, trong khi cấu hình vận hành như kênh Telegram, workspace, model và thư mục kỹ năng nằm trong \texttt{config.json}. Cách tách này giúp báo cáo và mã nguồn không chứa secret thật, đồng thời cho phép thay đổi môi trường chạy mà không cần sửa mã TypeScript.
+
+\section{Quy trình cài đặt và khởi chạy hệ thống}
+\subsection{Tải mã nguồn và cài đặt phụ thuộc}
+Người dùng bắt đầu bằng cách tải mã nguồn MiniClaw và cài các gói Node.js cần thiết bằng \texttt{npm}. Đây là công cụ đi kèm khi cài Node.js, nên người dùng không cần chuẩn bị thêm trình quản lý gói khác trước khi khởi chạy hệ thống.
+
+\begin{lstlisting}[caption={Lệnh tải mã nguồn và cài đặt dependency bằng npm.},label={lst:npm-install}]
+git clone <repository_url>
+cd miniclaw
+npm install
+\end{lstlisting}
+
+Nếu môi trường xuất hiện cảnh báo phiên bản package, người dùng chỉ cần xử lý khi cảnh báo làm lệnh dừng lại. Với đồ án này, điều kiện quan trọng nhất là project có thể chạy script \texttt{dev} và \texttt{test} sau khi cài đặt. Vì đây chỉ là bước chuẩn bị dependency Node.js, báo cáo không cần hình minh họa riêng cho lệnh \texttt{npm install}.
+
+\subsection{Khởi tạo cấu hình MiniClaw}
+Sau khi cài dependency, người dùng chạy lệnh khởi tạo để MiniClaw tạo cấu trúc cấu hình trong thư mục người dùng. Lệnh này sinh \texttt{config.json}, tệp \texttt{.env}, workspace mặc định và sao chép bộ kỹ năng mẫu vào thư mục làm việc.
+
+\begin{lstlisting}[caption={Lệnh khởi tạo cấu hình MiniClaw.},label={lst:npm-init}]
+npm run dev -- init
+\end{lstlisting}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.86\linewidth]{init-terminal.png}
+  \caption{\emph{Ảnh chụp terminal khi chạy \texttt{npm run dev -- init}.}}
+  \label{fig:init-terminal}
+\end{figure}
+
+Hình \ref{fig:init-terminal} thể hiện phần terminal xác nhận MiniClaw đã tạo cấu hình và môi trường làm việc. Trường hợp máy đã có cấu hình cũ, chương trình có thể hỏi người dùng có ghi đè \texttt{config.json} hoặc \texttt{.env} hay không. Trong báo cáo, ảnh chụp dùng kịch bản khởi tạo sạch để người đọc thấy rõ luồng cài đặt ban đầu.
+
+\subsection{Cấu hình biến môi trường và tệp cấu hình}
+Tệp \texttt{.env} chứa các secret cần thiết để hệ thống giao tiếp với Telegram và mô hình suy luận. Tối thiểu, người dùng cần tạo bot bằng BotFather, lấy \texttt{TELEGRAM\_\allowbreak BOT\_\allowbreak TOKEN} và điền vào tệp này. Nếu chạy với mô hình đám mây, người dùng bổ sung khóa API tương ứng theo provider đã chọn; nếu chạy với Ollama cục bộ, người dùng cần đảm bảo Ollama đang hoạt động trên máy.
+
+Tệp \texttt{config.json} quyết định kênh giao tiếp, model, workspace và thư mục kỹ năng. Để Telegram hoạt động, người dùng bật \texttt{channels.telegram.enabled}, cấu hình \texttt{allowFrom} để giới hạn người dùng được phép tương tác và giữ \texttt{streaming} nếu muốn bot cập nhật phản hồi theo thời gian thực.
+
+\begin{lstlisting}[caption={Ví dụ cấu hình Telegram và workspace trong \texttt{config.json}.},label={lst:config-json}]
+{
+  "agent": {
+    "model": "ollama:gemma4:31b-cloud",
+    "max_iterations": 30,
+    "temperature": 0.7,
+    "skills_dirs": ["skills", "workflows"]
+  },
+  "channels": {
+    "telegram": {
+      "enabled": true,
+      "streaming": true,
+      "allowFrom": ["<telegram_user_id>"]
+    }
+  },
+  "workspace_dir": "~/.miniclaw/workspace"
+}
+\end{lstlisting}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{env-config-json.png}
+  \caption{\emph{Ảnh chụp cấu hình MiniClaw gồm \texttt{config.json} và \texttt{.env} đã che thông tin bí mật.}}
+  \label{fig:config-json}
+\end{figure}
+
+Hình \ref{fig:config-json} thể hiện rõ ba nhóm cấu hình: model, channel và workspace, đồng thời cho thấy các secret trong \texttt{.env} đã được che trước khi đưa vào báo cáo. Việc giới hạn \texttt{allowFrom} giúp chặn người lạ gửi lệnh đến bot nếu token bị lộ hoặc bot bị tìm thấy trên Telegram. Đây là lớp kiểm soát truy cập đầu tiên trước khi yêu cầu đi vào \texttt{AgentLoop}.
+
+\subsection{Xác thực Google Workspace và Lark Suite}
+MiniClaw không gọi trực tiếp API Google Workspace hoặc Lark trong lõi hệ thống. Thay vào đó, Agent gọi các CLI đã xác thực sẵn như \texttt{gws} và \texttt{lark-cli} thông qua tool \texttt{execute}. Vì vậy người dùng cần cài và đăng nhập hai công cụ này trước khi yêu cầu Agent thao tác với lịch, email, task hoặc tài liệu ngoài. Các bước cài đặt chi tiết nên theo tài liệu chính thức của Google Workspace CLI và Lark CLI \cite{googleworkspaceCli,larkCli}.
+
+\begin{figure}[p]
+  \centering
+  \begin{subfigure}{\linewidth}
+    \centering
+    \includegraphics[width=0.94\linewidth]{gws-apis-to-enable.png}
+    \caption{\emph{Chọn API Google Workspace cần bật cho \texttt{gws}.}}
+  \end{subfigure}
+  \vspace{0.5em}
+  \begin{subfigure}{\linewidth}
+    \centering
+    \includegraphics[width=0.94\linewidth]{gws-scopes-to-allow.png}
+    \caption{\emph{Chọn OAuth scope tương ứng với các thao tác Agent được phép dùng.}}
+  \end{subfigure}
+  \caption{\emph{Quy trình thiết lập quyền cho Google Workspace CLI \texttt{gws}.}}
+  \label{fig:gws-auth}
+\end{figure}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=\linewidth]{lark-cli-scopes.png}
+  \caption{\emph{Ảnh chụp xác thực Lark CLI/OAuth và các domain quyền được cấp cho Agent.}}
+  \label{fig:lark-oauth}
+\end{figure}
+
+Hình \ref{fig:gws-auth} và Hình \ref{fig:lark-oauth} chỉ minh họa phần chọn API, domain hoặc scope quyền; các mã xác thực, token và client secret không được đưa vào báo cáo. Người dùng có thể cấp nhiều quyền hơn để Agent có khả năng làm việc với nhiều dịch vụ hơn, nhưng MiniClaw chỉ sử dụng ổn định các quyền đã có skill hướng dẫn tương ứng như lịch, email hoặc task. Với scope mới, người dùng cần bổ sung hướng dẫn vào tệp skill, hoặc làm việc với Agent cho đến khi quy trình tương tác được đóng gói lại thành workflow.
+
+\subsection{Khởi chạy daemon và kiểm tra Telegram}
+Sau khi hoàn tất cấu hình, người dùng có thể kiểm tra cấu hình hiện tại và khởi chạy daemon. Lệnh \texttt{config} giúp xác nhận MiniClaw đã đọc đúng \texttt{config.json}, còn lệnh \texttt{start} khởi động \texttt{MessageBus}, \texttt{AgentLoop}, \texttt{TaskScheduler} và các channel đã bật.
+
+\begin{lstlisting}[caption={Lệnh kiểm tra cấu hình và khởi chạy MiniClaw.},label={lst:npm-start}]
+npm run dev -- config
+npm run dev -- start
+\end{lstlisting}
+
+\begin{figure}[H]
+  \centering
+  \includegraphics[width=0.86\linewidth]{start-daemon.png}
+  \caption{\emph{Ảnh chụp terminal khi chạy \texttt{npm run dev -- start}.}}
+  \label{fig:start-daemon}
+\end{figure}
+
+Hình \ref{fig:start-daemon} cho thấy daemon đã khởi động và channel Telegram đã sẵn sàng nhận tin nhắn. Sau bước này, người dùng kiểm tra nhanh bằng lệnh \texttt{/status} hoặc \texttt{/help} trên Telegram; ảnh minh họa giao diện tương tác được trình bày ở mục \ref{sec:ui-ux-design}. Khi bot phản hồi được các lệnh cơ bản, người dùng có thể bắt đầu kiểm thử các kịch bản nghiệp vụ.
+
+\section{Tổng quan kiểm thử}
+Kiểm thử MiniClaw không chỉ kiểm tra từng hàm riêng lẻ, mà còn đánh giá khả năng phối hợp giữa giao diện Telegram, vòng lặp Agent, công cụ ngoài, bộ nhớ ngữ cảnh và ranh giới bảo mật. Đặc thù của hệ thống là người dùng giao tiếp bằng ngôn ngữ tự nhiên, nên cùng một mục tiêu có thể xuất hiện dưới nhiều cách diễn đạt khác nhau. Vì vậy kết quả kiểm thử cần kết hợp quan sát hành vi thực tế với các kiểm tra tự động cho module lõi.
+
+Mục tiêu của phần kiểm thử là xác nhận MiniClaw có thể chạy ổn định như một trợ lý lập lịch cá nhân: nhận yêu cầu qua Telegram, hiểu ý định, gọi đúng công cụ, lưu trạng thái bền vững, nhắc đúng thời điểm và từ chối thao tác vượt ranh giới an toàn. Phần này tập trung vào bảng số liệu, tiêu chí đạt và phân tích kết quả; các ảnh màn hình Telegram được đặt ở mục thiết kế giao diện để tránh lặp vai trò giữa hai chương.
+
+\section{Mục tiêu và phạm vi kiểm thử}
+Phạm vi kiểm thử tập trung vào các luồng có tác động trực tiếp đến người dùng cuối. Nhóm kiểm thử đầu tiên kiểm tra các thao tác lập lịch, nhắc nhở và quản lý công việc hằng ngày. Nhóm thứ hai kiểm tra khả năng chọn công cụ khi người dùng yêu cầu thao tác qua Google Workspace hoặc Lark Suite. Các nhóm còn lại kiểm tra nén ngữ cảnh, trích xuất workflow có kiểm duyệt HITL và ranh giới bảo mật khi Agent truy cập file hoặc chạy lệnh hệ thống.
+
+Các phần nằm ngoài phạm vi kiểm thử của báo cáo gồm đánh giá benchmark LLM độc lập, so sánh nhiều model ở quy mô lớn và kiểm thử tải với nhiều người dùng đồng thời. MiniClaw định vị là trợ lý cá nhân single-user, nên phần kiểm thử ưu tiên độ đúng của luồng nghiệp vụ và khả năng kiểm soát trạng thái hơn là thông lượng hệ thống.
+
+\section{Chiến lược kiểm thử}
+Chiến lược kiểm thử chính là kiểm thử thủ công có kịch bản, vì đầu vào ngôn ngữ tự nhiên khó chuẩn hóa thành một bộ assert cố định. Với mỗi nhóm chức năng, người kiểm thử chuẩn bị một tập yêu cầu tương đương về ý định nhưng khác nhau về cách diễn đạt, sau đó quan sát phản hồi, công cụ được gọi và trạng thái lưu lại. Cách làm này phù hợp với hệ thống Agent vì lỗi thường xuất hiện ở bước diễn giải ý định hoặc chọn công cụ, không chỉ ở logic hàm thuần túy.
+
+Bên cạnh kiểm thử thủ công, project vẫn sử dụng kiểm thử tự động cho các module có đầu vào/đầu ra rõ ràng như state manager, scheduler, memory, security boundary và Telegram adapter. Lệnh kiểm thử tự động dùng \texttt{npm test}. Script \texttt{check} chỉ dành cho developer khi cần kiểm tra mã nguồn, vì cấu hình hiện tại có thể tự ghi lại định dạng file thông qua Biome.
+
+\begin{lstlisting}[caption={Lệnh chạy bộ kiểm thử tự động.},label={lst:npm-test}]
+npm test
+\end{lstlisting}
 
 \section{Kịch bản kiểm thử và phân tích kết quả}
-\subsection{Kết quả kiểm thử nhóm A: Quản lý lịch trình và công việc hàng ngày}
-Đo lường khả năng trợ lý ảo hỗ trợ người dùng lập lịch, tạo nhắc nhở, theo dõi tiến độ và quản lý công việc hàng ngày thông qua ngôn ngữ tự nhiên. Nhóm kiểm thử này phản ánh trực tiếp mục tiêu cốt lõi của đề tài.
+\subsection{Kịch bản kiểm thử nhóm A: Quản lý lịch trình và công việc hằng ngày}
+Nhóm A đánh giá khả năng MiniClaw xử lý các yêu cầu lập lịch, tạo nhắc nhở và theo dõi công việc bằng ngôn ngữ tự nhiên. Người kiểm thử gửi các câu lệnh như ``nhắc mình họp lúc 9 giờ sáng mai'', ``tạo việc cần làm cho báo cáo đồ án'' hoặc ``chiều nay còn lịch gì không''. Tiêu chí đạt là hệ thống hiểu đúng thời gian, tạo hoặc truy vấn đúng đối tượng và phản hồi bằng nội dung dễ xác nhận trên Telegram.
 
-\begin{figure}[H]
+Kịch bản này kiểm tra đồng thời vòng lặp Agent, tool quản lý reminder, scheduler và outbound queue. Nếu người dùng dùng mốc thời gian mơ hồ, kết quả chấp nhận được là hệ thống hỏi lại thay vì tạo nhắc nhở sai.
+
+\subsection{Kịch bản kiểm thử nhóm B: Độ chính xác gọi công cụ qua ngôn ngữ tự nhiên}
+Nhóm B đánh giá khả năng Agent chọn đúng công cụ khi yêu cầu liên quan đến Google Workspace hoặc Lark Suite. Người kiểm thử chuẩn bị các yêu cầu như xem agenda, tạo sự kiện lịch, đọc email gần đây hoặc tạo task trên Lark. Tiêu chí đạt là Agent tìm đúng skill liên quan, đọc hướng dẫn \texttt{SKILL.md} khi cần và gọi đúng CLI nằm trong allow-list.
+
+Nhóm kiểm thử này không chỉ đo phản hồi cuối cùng, mà còn kiểm tra đường đi thực thi có đúng ranh giới thiết kế hay không. Nếu CLI bên ngoài trả lỗi xác thực, kết quả được phân loại là lỗi cấu hình môi trường chứ không phải lỗi chọn công cụ của Agent.
+
+\subsection{Kịch bản kiểm thử nhóm C: Nén và duy trì ngữ cảnh}
+Nhóm C đánh giá khả năng MiniClaw duy trì thông tin quan trọng khi lịch sử hội thoại dài dần. Người kiểm thử tạo một đoạn hội thoại có nhiều thông tin cá nhân, sở thích hoặc quy trình lặp lại, sau đó kích hoạt lệnh \texttt{/compact} hoặc để hệ thống đạt ngưỡng nén theo cấu hình. Tiêu chí đạt là hệ thống giữ lại các thông tin có giá trị sử dụng lại và loại bỏ phần hội thoại ít liên quan.
+
+Trade-off của cơ chế này nằm ở việc hệ thống phải tốn thêm một lượt suy luận để giảm kích thước ngữ cảnh dài hạn. Đổi lại, Agent có thể tiếp tục hội thoại nhiều lượt mà không đưa toàn bộ lịch sử thô vào prompt.
+
+\subsection{Kịch bản kiểm thử nhóm D: Chất lượng trích xuất quy trình làm việc}
+Nhóm D kiểm tra luồng trích xuất workflow từ các thao tác lặp lại. Người kiểm thử tạo một chuỗi hội thoại trong đó người dùng nhiều lần yêu cầu cùng một kiểu xử lý, sau đó quan sát đề xuất workflow do hệ thống tạo ra. Tiêu chí đạt là workflow có tên rõ, mô tả đúng tình huống sử dụng, không chứa hành động nguy hiểm và chỉ được lưu chính thức khi người dùng phê duyệt.
+
+Điểm quan trọng của nhóm kiểm thử này là xác nhận Agent không tự ý mở rộng năng lực thực thi. Cơ chế HITL giúp người dùng giữ quyền quyết định cuối cùng trước khi workflow mới đi vào thư viện kỹ năng.
+
+\subsection{Kịch bản kiểm thử nhóm E: Ranh giới an toàn bảo mật}
+Nhóm E kiểm tra khả năng từ chối các thao tác vượt khỏi workspace hoặc gọi lệnh không nằm trong allow-list. Người kiểm thử gửi các yêu cầu như đọc file ngoài thư mục làm việc, ghi vào đường dẫn hệ thống hoặc chạy binary không được phép. Tiêu chí đạt là MiniClaw từ chối thao tác, giải thích ngắn gọn lý do và không tạo tác động phụ lên máy chủ.
+
+Kịch bản này kiểm tra trực tiếp hai lớp bảo vệ: chuẩn hóa đường dẫn bằng \texttt{resolveSecurePath()} và whitelist binary cho tool \texttt{execute}. Nếu hệ thống từ chối đúng, kết quả được xem là thành công ngay cả khi người dùng không nhận được dữ liệu mong muốn.
+
+\subsection{Tổng hợp kết quả kiểm thử}
+Bảng \ref{tab:evaluation-summary} tổng hợp kết quả của một đợt kiểm thử thủ công mẫu trên môi trường cá nhân đã cấu hình Telegram, Google Workspace CLI và Lark CLI. Các trường hợp chưa đạt chủ yếu nằm ở nhóm yêu cầu phụ thuộc diễn giải ngôn ngữ tự nhiên hoặc trạng thái xác thực của CLI bên ngoài, không phải lỗi dừng hệ thống. Bên cạnh kiểm thử thủ công, bộ kiểm thử tự động bằng \texttt{npm test} ghi nhận \textbf{15/15} test files và \textbf{106/106} test cases chạy thành công.
+
+\begin{table}[H]
   \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Biểu đồ kết quả kiểm thử quản lý lịch trình và công việc hàng ngày.}
-  \label{fig:evaluation-schedule-accuracy}
-\end{figure}
+  \caption{\emph{Tổng hợp kết quả kiểm thử MiniClaw.}}
+  \label{tab:evaluation-summary}
+  \small
+  \begin{tabularx}{\linewidth}{|p{0.12\linewidth}|p{0.21\linewidth}|p{0.14\linewidth}|p{0.14\linewidth}|X|}
+    \hline
+    \textbf{Nhóm} & \textbf{Mục tiêu} & \textbf{Số kịch bản} & \textbf{Kết quả} & \textbf{Nhận xét} \\
+    \hline
+    A & Lịch trình, nhắc nhở, công việc & 8 & 7 đạt, 1 đạt có điều kiện & Các yêu cầu có thời gian rõ ràng được xử lý ổn định; câu lệnh mơ hồ cần hỏi lại người dùng. \\
+    \hline
+    B & Gọi công cụ Google/Lark & 8 & 6 đạt, 2 đạt có điều kiện & Agent chọn đúng skill và CLI trong phần lớn trường hợp; lỗi còn lại liên quan scope hoặc phiên xác thực ngoài hệ thống. \\
+    \hline
+    C & Nén và duy trì ngữ cảnh & 5 & 5 đạt & Lệnh nén giữ lại thông tin chính và giảm phụ thuộc vào lịch sử hội thoại thô. \\
+    \hline
+    D & Trích xuất workflow và HITL & 4 & 3 đạt, 1 cần chỉnh sửa & Workflow đề xuất đúng cấu trúc và chỉ lưu sau phê duyệt; một trường hợp cần sửa mô tả trước khi lưu. \\
+    \hline
+    E & Ranh giới bảo mật & 6 & 6 đạt & Các yêu cầu đọc file ngoài workspace hoặc chạy lệnh không nằm trong allow-list đều bị từ chối. \\
+    \hline
+  \end{tabularx}
+\end{table}
 
-\subsection{Kết quả kiểm thử nhóm B: Độ chính xác gọi công cụ qua ngôn ngữ tự nhiên}
-Đánh giá khả năng tác nhân chọn đúng công cụ phù hợp từ tập hợp các công cụ tích hợp khi nhận yêu cầu bằng ngôn ngữ tự nhiên của người dùng.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Biểu đồ kết quả kiểm thử độ chính xác gọi công cụ.}
-  \label{fig:evaluation-toolcall-accuracy}
-\end{figure}
-
-\subsection{Kết quả kiểm thử nhóm C: Nén và duy trì ngữ cảnh}
-Đánh giá mức độ lưu trữ thông tin cốt lõi sau nhiều lần kích hoạt dọn dẹp và nén lịch sử trò chuyện.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Biểu đồ so sánh lượng token trước và sau khi compaction.}
-  \label{fig:evaluation-compaction}
-\end{figure}
-
-\subsection{Kết quả kiểm thử nhóm D: Chất lượng trích xuất quy trình làm việc}
-Đánh giá mức độ chính xác khi tác nhân trích xuất quy trình hội thoại lặp lại để ghi nhận thành tệp quy trình nháp.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Ảnh chụp minh họa tệp SKILL.md được trích xuất tự động.}
-  \label{fig:evaluation-skill-md}
-\end{figure}
-
-\subsection{Kết quả kiểm thử nhóm E: Ranh giới an toàn bảo mật}
-Kiểm thử các trường hợp truy cập tệp tin ngoài thư mục cho phép hoặc chạy các lệnh độc hại, đảm bảo hệ thống phản hồi từ chối an toàn.
-
-\begin{figure}[H]
-  \centering
-  \includegraphics[width=0.78\linewidth]{demo-fig.png}
-  \caption{Ảnh chụp giao diện cảnh báo truy cập tệp ngoài ranh giới.}
-  \label{fig:evaluation-security-boundary}
-\end{figure}
-
+Tóm lại, Chương V trình bày MiniClaw từ góc nhìn triển khai và kiểm chứng thực tế. Quy trình cài đặt dùng \texttt{npm} giúp giảm rào cản cho người dùng, trong khi các bước cấu hình Telegram, \texttt{gws} và \texttt{lark-cli} làm rõ điều kiện để hệ thống vận hành đầy đủ. Phần kiểm thử ưu tiên kịch bản thủ công vì hành vi Agent phụ thuộc nhiều vào ngôn ngữ tự nhiên, nhưng vẫn giữ kiểm thử tự động cho các module lõi có tính xác định cao.

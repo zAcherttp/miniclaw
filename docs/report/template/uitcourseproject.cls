@@ -52,10 +52,10 @@
 
 \geometry{
   a4paper,
-  top=2.54cm,
-  bottom=2.54cm,
-  left=2.54cm,
-  right=2.54cm,
+  top=3cm,
+  bottom=3.5cm,
+  left=3.5cm,
+  right=2cm,
   headheight=18pt,
   includeheadfoot=true
 }
@@ -219,15 +219,15 @@
 
 \newcommand{\makecoverpage}{%
   \begin{titlepage}
-    \newgeometry{top=1.2cm,bottom=2.54cm,left=2.54cm,right=2.54cm}
+    \newgeometry{top=3cm,bottom=3.5cm,left=3.5cm,right=2cm}
     \thispagestyle{empty}
     \begin{tikzpicture}[remember picture,overlay]
       \draw[uitborder, line width=4.0pt]
-        ($(current page.north west)+(0.72cm,-0.72cm)$)
+        ($(current page.north west)+(2.22cm,-0.72cm)$)
         rectangle
         ($(current page.south east)+(-0.72cm,0.72cm)$);
       \draw[uitborder, line width=2.0pt]
-        ($(current page.north west)+(0.95cm,-0.95cm)$)
+        ($(current page.north west)+(2.45cm,-0.95cm)$)
         rectangle
         ($(current page.south east)+(-0.95cm,0.95cm)$);
     \end{tikzpicture}
@@ -259,7 +259,7 @@
     \vspace{2.4cm}
     \begin{minipage}{0.88\textwidth}
       \normalsize
-      \noindent\textbf{Môn học:} \@coursecode{} -- \@coursename\par
+      \noindent\textbf{Môn học:} \@coursecode\par
       \vspace{0.35cm}
       \noindent\textbf{Giảng viên hướng dẫn:} \@supervisor\par
       \vspace{0.35cm}
@@ -279,6 +279,7 @@
       \@reportplace{}, \@reportyear
     \end{center}
   \end{titlepage}
+  \restoregeometry
 }
 
 \newcommand{\setupmainmatter}{%

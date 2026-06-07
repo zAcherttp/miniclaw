@@ -2,27 +2,44 @@
 \label{chap:conclusion}
 
 \section{Tổng kết đồ án}
-Đồ án "Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hàng ngày" đã hoàn thành việc nghiên cứu, thiết kế và cài đặt thực tế một hệ thống trợ lý ảo cá nhân thông minh hoạt động ổn định trên môi trường tự vận hành.
+Đồ án ``Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày'' đã nghiên cứu, thiết kế và hiện thực một hệ thống trợ lý cá nhân có khả năng vận hành trên môi trường cục bộ. MiniClaw không chỉ dừng ở mức chatbot hỏi đáp, mà được tổ chức như một hệ thống Agent có vòng lặp xử lý riêng, có hàng đợi tin nhắn, có bộ lập lịch nền, có cơ chế lưu trạng thái hội thoại và có khả năng gọi các công cụ ngoài theo hướng dẫn kỹ năng.
+
+Kết quả chính của đồ án là chứng minh được một kiến trúc trợ lý cá nhân dựa trên LLM có thể kết hợp nhiều thành phần thực dụng. Telegram được dùng làm kênh giao tiếp, \texttt{MessageBus} điều phối tin nhắn bất đồng bộ, \texttt{AgentLoop} và LangGraph xử lý suy luận, \texttt{Task\allowbreak Scheduler} thực thi nhắc nhở theo thời gian, \texttt{File\allowbreak Checkpoint\allowbreak Saver} duy trì ngữ cảnh, còn hệ thống \texttt{SKILL.md} mở rộng năng lực mà không cần sửa trực tiếp lõi Agent. Cách tổ chức này giúp MiniClaw có thể tiếp nhận yêu cầu tự nhiên của người dùng, phân rã thành thao tác phù hợp, gọi công cụ khi cần và phản hồi lại trên cùng kênh hội thoại.
+
+Đồ án cũng thể hiện rõ định hướng thiết kế an toàn cho trợ lý cá nhân chạy trên máy người dùng. Các secret được tách khỏi mã nguồn, truy cập tệp được giới hạn trong workspace, lệnh hệ thống được kiểm soát bằng allow-list, còn các tích hợp Google Workspace và Lark Suite được thực hiện thông qua CLI đã xác thực sẵn thay vì lưu trực tiếp toàn bộ token trong lõi MiniClaw. Nhờ đó, hệ thống đạt được mục tiêu prototype vận hành được, có khả năng mở rộng và có ranh giới bảo mật phù hợp với phạm vi đồ án.
 
 \section{Kết quả đạt được}
-Hệ thống Miniclaw đã đạt được các kết quả nổi bật bao gồm:
-\begin{itemize}
-  \item Triển khai thành công tác nhân thông minh ReAct Agent có thể lập lịch trình và gọi các công cụ ngoại vi chính xác.
-  \item Xây dựng cơ chế nén ngữ cảnh tự động hiệu quả giúp tiết kiệm token đáng kể trong khi vẫn bảo toàn thông tin cần nhớ.
-  \item Hiện thực hóa quy trình trích xuất và lưu trữ quy trình làm việc tái sử dụng được (Reusable Workflow Extraction) kết hợp duyệt từ con người (HITL).
-  \item Đảm bảo ranh giới bảo mật vững chắc chống lại các hành vi xâm nhập trái phép vào máy chủ cục bộ.
-\end{itemize}
+Về mặt chức năng, MiniClaw đã hiện thực được các luồng nghiệp vụ cốt lõi của một trợ lý lập lịch cá nhân. Người dùng có thể giao tiếp với hệ thống qua Telegram, gửi yêu cầu bằng ngôn ngữ tự nhiên, nhận phản hồi theo thời gian thực và kiểm tra trạng thái hệ thống bằng các lệnh như \texttt{/status} hoặc \texttt{/help}. Các yêu cầu liên quan đến nhắc nhở, công việc, lịch và thao tác qua công cụ ngoài được định tuyến qua Agent thay vì xử lý bằng tập lệnh cố định.
 
-\section{Khó khăn và hạn chế còn tồn tại}
-Mặc dù đạt được mục tiêu đề ra, hệ thống vẫn đối mặt với một số khó khăn:
-\begin{itemize}
-  \item Sự phụ thuộc vào kết nối mạng bên ngoài và độ trễ của các dịch vụ LLM thương mại.
-  \item Việc trích xuất quy trình trong đàm thoại nén đôi lúc còn chịu ảnh hưởng bởi hiện tượng ảo giác (hallucination) của mô hình.
-\end{itemize}
+Về mặt kiến trúc, hệ thống đã tách được các trách nhiệm chính thành các thành phần rõ ràng. \texttt{ChannelManager} và các channel chịu trách nhiệm giao tiếp với người dùng; \texttt{MessageBus} gom và phân phối tin nhắn; \texttt{AgentLoop} quản lý vòng đời xử lý yêu cầu; LangGraph Agent thực hiện suy luận và gọi tool; \texttt{StateManager}, checkpoint và các tệp JSON đảm nhiệm lưu trạng thái. Sự tách biệt này giúp báo cáo có thể mô tả hệ thống qua sơ đồ hoạt động, sơ đồ trình tự, ERD và sơ đồ lớp một cách nhất quán.
 
-\section{Định hướng phát triển tương lai}
-Trong tương lai, đồ án hướng tới các cải tiến sau:
-\begin{itemize}
-  \item Tích hợp thêm các bộ kết nối lịch trình khác như CalDAV, Outlook, và hỗ trợ các mô hình ngôn ngữ lớn cục bộ nhẹ hơn để tối ưu chi phí và tăng tính riêng tư.
-  \item Nâng cao thuật toán trích xuất quy trình tự động giúp tăng độ chính xác trong các tình huống hội thoại phức tạp.
-\end{itemize}
+Về mặt mở rộng năng lực, MiniClaw đã xây dựng cơ chế nạp động kỹ năng và workflow từ các tệp \texttt{SKILL.md}. Agent không cần biết trước toàn bộ chi tiết API của Google Workspace hoặc Lark Suite trong system prompt chính; thay vào đó, Agent có thể tìm skill liên quan, đọc hướng dẫn và gọi CLI phù hợp. Cơ chế này làm giảm độ phình của prompt, đồng thời tạo nền tảng để bổ sung thêm năng lực mới bằng cách thêm tệp kỹ năng thay vì thay đổi cấu trúc lõi.
+
+Về mặt bộ nhớ và ngữ cảnh, hệ thống đã có cơ chế checkpoint hội thoại, nén ngữ cảnh, trích xuất workflow và quản lý long-term memory. Đặc biệt, phần memory hiện tại đã hỗ trợ lưu fact, sinh embedding vector, tìm kiếm theo độ tương đồng ngữ nghĩa bằng cosine similarity và fallback sang tìm kiếm từ khóa khi embedding không khả dụng. Đây là nền tảng quan trọng để Agent có thể sử dụng lại thông tin người dùng trong các phiên làm việc sau, đồng thời vẫn duy trì khả năng vận hành khi dịch vụ embedding gặp lỗi.
+
+Về mặt an toàn, đồ án đã hiện thực các lớp bảo vệ thực tế cho một Agent có quyền gọi công cụ. Truy cập file được chuẩn hóa qua workspace boundary, các thao tác thực thi lệnh được giới hạn bởi danh sách binary cho phép, và workflow mới chỉ được lưu sau khi có sự phê duyệt của người dùng thông qua cơ chế HITL. Các quyết định này giúp giảm rủi ro khi Agent được trao khả năng thao tác với hệ thống cục bộ và dịch vụ bên ngoài.
+
+\section{Hạn chế}
+Dù đã đạt được mục tiêu đề ra ở mức prototype, MiniClaw vẫn còn một số hạn chế cần được nhìn nhận rõ. Thứ nhất, kết quả xử lý yêu cầu tự nhiên vẫn phụ thuộc vào chất lượng mô hình ngôn ngữ, prompt và ngữ cảnh được cung cấp tại thời điểm suy luận. Cùng một ý định của người dùng có thể được diễn đạt theo nhiều cách khác nhau, nên hệ thống cần nhiều kiểm thử thủ công có kịch bản để đánh giá hành vi thực tế.
+
+Thứ hai, các tích hợp Google Workspace và Lark Suite phụ thuộc vào CLI bên ngoài. Cách làm này giúp giảm lượng secret MiniClaw phải quản lý trực tiếp, nhưng đồng thời khiến độ ổn định của một số chức năng phụ thuộc vào trạng thái xác thực, phiên bản CLI, quyền OAuth và lỗi trả về từ dịch vụ ngoài. Khi CLI thay đổi giao diện lệnh hoặc scope, các skill tương ứng cần được cập nhật.
+
+Thứ ba, cơ chế lưu trữ hiện tại chủ yếu dựa trên file JSON và local file store. Cách tiếp cận này phù hợp với phạm vi trợ lý cá nhân single-user và dễ quan sát trong đồ án, nhưng chưa phải mô hình tối ưu cho triển khai multi-user hoặc production. Khi số lượng phiên, reminder, checkpoint và memory tăng lên, hệ thống sẽ cần chiến lược backup, migration, locking và quan sát lỗi chặt chẽ hơn.
+
+Thứ tư, phần đánh giá hiện tại ưu tiên kiểm thử thủ công kết hợp một số unit test cho module lõi. Cách tiếp cận này hợp lý với hệ thống Agent, nhưng chưa đủ để đo lường ổn định dài hạn qua nhiều phiên bản prompt, model và skill. Báo cáo chưa thực hiện benchmark quy mô lớn giữa nhiều mô hình hoặc kiểm thử tải với nhiều người dùng đồng thời.
+
+\section{Hướng phát triển}
+Hướng phát triển quan trọng nhất là mở rộng hệ sinh thái connector. MiniClaw hiện đã có nền tảng skill-driven integration cho Google Workspace và Lark Suite, nhưng một trợ lý cá nhân thực tế cần làm việc với nhiều nguồn dữ liệu hơn như Outlook, CalDAV, Notion, Slack, GitHub, hệ thống quản lý dự án, email server riêng hoặc các dịch vụ lưu trữ tài liệu. Khi bổ sung connector mới, cần chuẩn hóa cấu trúc skill, cách khai báo quyền, cách xử lý lỗi xác thực và cách trình bày kết quả để Agent có thể sử dụng nhất quán.
+
+Hướng thứ hai là tăng cường đánh giá và kiểm thử hồi quy cho hành vi Agent. Hệ thống nên có bộ \textit{golden conversations} cho các use case quan trọng, trong đó mỗi kịch bản mô tả input của người dùng, tool được kỳ vọng, ràng buộc an toàn và tiêu chí chấp nhận. Bộ kiểm thử này có thể kết hợp snapshot prompt, mock tool response và log tool call để phát hiện sớm khi thay đổi model, prompt hoặc skill làm lệch hành vi hệ thống.
+
+Hướng thứ ba là nâng cấp khả năng quan sát vận hành. MiniClaw có thể bổ sung structured logging, trace theo từng request, dashboard cho scheduler, checkpoint, memory, hàng đợi outbound và lịch sử tool call. Các thông tin này giúp người phát triển phân biệt lỗi do Agent suy luận sai, lỗi do công cụ ngoài, lỗi do cấu hình hay lỗi do trạng thái lưu trữ. Đây là yêu cầu quan trọng nếu hệ thống được sử dụng lâu dài thay vì chỉ chạy trong môi trường demo.
+
+Hướng thứ tư là hoàn thiện quản trị workflow và HITL. Hiện tại workflow có thể được trích xuất và lưu lại sau khi người dùng phê duyệt, nhưng trong tương lai nên có cơ chế xem danh sách workflow, chỉnh sửa nội dung, quản lý phiên bản, rollback, ghi nhận lịch sử phê duyệt và kiểm tra rủi ro trước khi workflow được đưa vào sử dụng. Điều này giúp người dùng kiểm soát tốt hơn việc Agent học từ thói quen cá nhân.
+
+Hướng thứ năm là tăng độ sẵn sàng cho triển khai thực tế. Hệ thống có thể được đóng gói dưới dạng service chạy nền, container hoặc desktop daemon; bổ sung mã hóa secret, backup định kỳ, cơ chế phục hồi state, migration cho tệp dữ liệu và chính sách phân quyền nếu mở rộng sang nhiều người dùng. Khi đó, kiến trúc file-based hiện tại có thể được giữ cho chế độ cá nhân, đồng thời bổ sung backend lưu trữ mạnh hơn cho các môi trường cần độ tin cậy cao.
+
+Cuối cùng, phần bộ nhớ dài hạn có thể tiếp tục được cải thiện theo hướng quản trị chất lượng thay vì chỉ mở rộng kỹ thuật tìm kiếm. Vì hệ thống đã có semantic search dựa trên embedding vector và keyword fallback, trọng tâm tiếp theo nên là chính sách chọn thông tin cần nhớ, phát hiện memory lỗi thời, hợp nhất fact trùng lặp, giải thích vì sao một memory được truy xuất và cho phép người dùng xem hoặc xóa memory nhạy cảm. Những cải tiến này giúp long-term memory trở nên đáng tin cậy và minh bạch hơn trong vai trò trợ lý cá nhân.
+
+\section{Kết luận chung}
+Nhìn chung, MiniClaw đã đạt được mục tiêu xây dựng một prototype trợ lý cá nhân dựa trên LLM có khả năng vận hành thực tế, mở rộng bằng kỹ năng, tích hợp công cụ ngoài và duy trì trạng thái dài hạn. Đồ án cho thấy hướng tiếp cận kết hợp Agent runtime, skill file, scheduler, checkpoint, memory và HITL là phù hợp cho bài toán quản lý lịch trình và công việc hằng ngày. Các hạn chế còn lại chủ yếu nằm ở mức độ đánh giá, độ bền khi vận hành lâu dài và khả năng mở rộng hệ sinh thái connector, đây cũng là cơ sở rõ ràng cho các bước phát triển tiếp theo.
