@@ -1,6 +1,6 @@
 # Miniclaw 🐾
 
-**Đồ án Tốt nghiệp / Graduation Thesis:** *Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày* (Integrating LLMs to Develop a Virtual Assistant for Daily Schedule and Task Management)
+**Đồ án 1:** *Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày* (Integrating LLMs to Develop a Virtual Assistant for Daily Schedule and Task Management)
 
 ---
 
@@ -8,7 +8,7 @@
 
 **Miniclaw** là một tác nhân thông minh cá nhân (personal AI assistant daemon) hoạt động chạy ngầm liên tục, giao tiếp qua kênh **Telegram Bot** và giao diện dòng lệnh (**CLI**). Hệ thống được xây dựng trên nền tảng **Node.js, TypeScript** và khung điều phối đồ thị trạng thái **LangGraph** nhằm tự động hóa các hoạt động quản lý lịch trình, công việc và tương tác hệ thống một cách tối ưu, bảo mật và an toàn dữ liệu.
 
-Đây là sản phẩm thực nghiệm cốt lõi của đề tài nghiên cứu khoa học cấp cơ sở/đồ án tốt nghiệp: **"Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày"**.
+Đây là sản phẩm thực nghiệm cốt lõi của Đồ án 1: **"Tích hợp LLM để phát triển trợ lý ảo giúp quản lý lịch trình và công việc hằng ngày"**.
 
 ---
 
