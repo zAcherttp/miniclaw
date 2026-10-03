@@ -1,6 +1,9 @@
 # Node & TypeScript
 node_modules/
 dist/
+coverage/
+reports/
+.stryker-tmp/
 *.tsbuildinfo
 
 # Local data

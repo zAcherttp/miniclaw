@@ -1,4 +1,10 @@
-export type MessageMetadataValue = string | number | boolean | null | undefined;
+export type MessageMetadataValue =
+	| string
+	| string[]
+	| number
+	| boolean
+	| null
+	| undefined;
 export type MessageMetadata = Record<string, MessageMetadataValue>;
 
 export interface InboundMessage {

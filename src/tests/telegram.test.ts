@@ -13,6 +13,7 @@ vi.mock("@/agent/models", () => ({
 const tempHome = fs.mkdtempSync(path.join(os.tmpdir(), "miniclaw-telegram-"));
 
 import type { Bot } from "grammy";
+import { makeBotInfo as makeBotConfig } from "./helpers/telegram";
 import type { AgentLoop } from "@/agent/loop";
 import { type SerializedStreamEntry, StateManager } from "@/agent/state";
 import { MessageBus } from "@/bus/queue";
@@ -43,21 +44,6 @@ describe("Telegram Channel Integration & Recovery", () => {
 		StateManager.filePath = undefined;
 		vi.restoreAllMocks();
 	});
-
-	type Config = Bot["botInfo"];
-
-	function makeBotConfig(overrides?: Partial<Config>): Config {
-		return {
-			id: 1234567,
-			is_bot: true,
-			first_name: "MyBot",
-			username: "my_bot",
-			can_join_groups: true,
-			can_read_all_group_messages: false,
-			supports_inline_queries: false,
-			...overrides,
-		} as unknown as Config;
-	}
 
 	type TelegramUpdate = Parameters<Bot["handleUpdate"]>[0];
 
@@ -106,9 +92,7 @@ describe("Telegram Channel Integration & Recovery", () => {
 		vi.spyOn(bot, "stop").mockImplementation(async () => {});
 
 		// Install a default mock API interceptor to prevent any real network requests
-		bot.api.config.use(async (prev, method, payload, signal) => {
-			return { ok: true, result: {} };
-		});
+		bot.api.config.use(vi.fn().mockResolvedValue({ ok: true, result: {} }));
 
 		return { channel, bot };
 	}

@@ -17,8 +17,8 @@ Project topic: **Integrating LLMs to Develop a Virtual Assistant for Daily Sched
 
 ## Prerequisites
 
-- Node.js 20+
-- npm
+- Node.js 24
+- pnpm 12.4.2 (pinned in `package.json`)
 - Git
 - Telegram bot token from BotFather
 - Optional: Ollama or cloud LLM API keys
@@ -29,8 +29,8 @@ Project topic: **Integrating LLMs to Develop a Virtual Assistant for Daily Sched
 ```bash
 git clone <repository_url>
 cd miniclaw
-npm install
-npm run dev -- init
+pnpm install --frozen-lockfile
+pnpm dev init
 ```
 
 After initialization, edit the generated files under `~/.miniclaw`:
@@ -41,20 +41,45 @@ After initialization, edit the generated files under `~/.miniclaw`:
 Start MiniClaw:
 
 ```bash
-npm run dev -- start
+pnpm dev start
 ```
 
 View the current configuration:
 
 ```bash
-npm run dev -- config
+pnpm dev config
 ```
 
 Run tests:
 
 ```bash
-npm test
+pnpm test
 ```
+
+## Test readiness
+
+Install the locked dependencies before running checks:
+
+```bash
+pnpm install --frozen-lockfile
+pnpm verify
+pnpm test:coverage
+```
+
+`verify` runs strict TypeScript checking over production code and tests, the
+Vitest suite, then TypeScript compilation. Coverage includes production files
+under `src/`, excludes test fixtures, and writes JSON, JSON-summary and HTML
+reports to `coverage/`. Vitest and its V8 coverage provider are both pinned to
+4.1.10.
+
+The tests mock Telegram and model calls and use temporary directories for
+application state. They do not require a Telegram token, LLM key, Ollama server,
+or access to your real `~/.miniclaw` configuration.
+
+For benchmark comparisons, pin an exact Git commit and retain its lockfile.
+The handwritten suite is a baseline; coverage alone does not establish its
+ability to detect faults. Run mutation measurements from the external benchmark
+harness, using the same source snapshot and test selection for every adapter.
 
 ## Telegram Commands
 
