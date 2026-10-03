@@ -27,6 +27,7 @@ describe("Offline Memory & Semantic Recall Infrastructure", () => {
 			model: "ollama:gemma4:31b-cloud",
 			max_iterations: 30,
 			temperature: 0.7,
+			reasoning_effort: "medium",
 			compaction_trigger_tokens: 50000,
 			skills_dirs: ["skills"],
 		},

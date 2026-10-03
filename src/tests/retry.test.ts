@@ -1,7 +1,9 @@
 import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
+import { DynamicStructuredTool } from "@langchain/core/tools";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { makeBotInfo } from "./helpers/telegram";
 
 // Hoisted mocks for ES Modules static binding safety
 const mockGraphInvoke = vi.fn();
@@ -220,15 +222,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			allowFrom: ["*"],
 		});
 		const bot = (channel as unknown as { bot: import("grammy").Bot }).bot;
-		bot.botInfo = {
-			id: 1234567,
-			is_bot: true,
-			first_name: "MyBot",
-			username: "my_bot",
-			can_join_groups: true,
-			can_read_all_group_messages: false,
-			supports_inline_queries: false,
-		};
+		bot.botInfo = makeBotInfo();
 
 		let attempt = 0;
 		const apiCalls: { method: string; payload: Record<string, unknown> }[] = [];
@@ -274,15 +268,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			allowFrom: ["*"],
 		});
 		const bot = (channel as unknown as { bot: import("grammy").Bot }).bot;
-		bot.botInfo = {
-			id: 1234567,
-			is_bot: true,
-			first_name: "MyBot",
-			username: "my_bot",
-			can_join_groups: true,
-			can_read_all_group_messages: false,
-			supports_inline_queries: false,
-		};
+		bot.botInfo = makeBotInfo();
 
 		let attempt = 0;
 		const apiCalls: { method: string; payload: Record<string, unknown> }[] = [];
@@ -304,6 +290,11 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			import("grammy").Bot["api"]["config"]["use"]
 		>[0]);
 
+		// Open a real stream through the public API before concluding it.
+		await channel.sendDelta("12345", "streamed message", {});
+		expect(await StateManager.getTelegramStreams()).toHaveLength(1);
+		apiCalls.length = 0;
+
 		// Conclude stream with a buffer
 		const buf = {
 			text: "streamed message",
@@ -312,12 +303,12 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			chat_id: "12345",
 		};
 
-		await channel.concludeStream("chat-12345", buf);
+		await channel.concludeStream("12345", buf);
 
 		// Verify it called sendMessage 3 times (2 failures + 1 success)
 		expect(attempt).toBe(3);
 		expect(apiCalls).toHaveLength(3);
-		expect(channel.streamBufs.has("chat-12345")).toBe(false); // Cleared upon success
+		expect(await StateManager.getTelegramStreams()).toEqual([]);
 	});
 
 	it("should route messages to the consolidation agent when active consolidation is in state", async () => {
@@ -475,9 +466,12 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			"telegram",
 		);
 		const concludeTool = agentInstance.options.tools?.find(
-			(t: { name: string }) => t.name === "conclude_consolidation",
+			(tool): tool is DynamicStructuredTool =>
+				tool instanceof DynamicStructuredTool &&
+				tool.name === "conclude_consolidation",
 		);
 		expect(concludeTool).toBeDefined();
+		if (!concludeTool) throw new Error("Missing conclude_consolidation tool");
 
 		// Invoke conclude_consolidation tool
 		await concludeTool.invoke({ action: "save" });
@@ -518,9 +512,12 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			"telegram",
 		);
 		const concludeTool = agentInstance.options.tools?.find(
-			(t: { name: string }) => t.name === "conclude_consolidation",
+			(tool): tool is DynamicStructuredTool =>
+				tool instanceof DynamicStructuredTool &&
+				tool.name === "conclude_consolidation",
 		);
 		expect(concludeTool).toBeDefined();
+		if (!concludeTool) throw new Error("Missing conclude_consolidation tool");
 
 		// 3. Invoke conclude_consolidation tool
 		await concludeTool.invoke({ action: "save" });

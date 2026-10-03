@@ -239,7 +239,7 @@ function estimateReasoningTokens(message: BaseMessage): number {
 }
 
 function stripReasoning(message: BaseMessage): BaseMessage {
-	const cloned = new (message.constructor as any)({
+	const cloned: BaseMessage = new (message.constructor as any)({
 		content: Array.isArray(message.content) ? [...message.content] : message.content,
 		name: message.name,
 		id: message.id,

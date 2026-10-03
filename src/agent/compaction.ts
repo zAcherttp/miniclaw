@@ -191,7 +191,7 @@ Do NOT wrap the JSON in markdown blocks or include any other conversational prea
 			);
 		}
 
-		const workflowContent = (parsed.workflow || "").trim();
+		const workflowContent: string = (parsed.workflow || "").trim();
 
 		if (
 			workflowContent &&

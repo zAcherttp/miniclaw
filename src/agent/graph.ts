@@ -11,6 +11,7 @@ import {
 	START,
 	StateGraph,
 } from "@langchain/langgraph";
+import type { MessageBus } from "@/bus/queue";
 import type { AppConfig } from "@/config/schema";
 import { logger } from "@/utils/logger";
 import { forceCompactMessages } from "./compaction";

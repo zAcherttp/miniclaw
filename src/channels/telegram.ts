@@ -2,7 +2,7 @@ import fs from "node:fs";
 import path from "node:path";
 import { Bot } from "grammy";
 import type { AgentLoop } from "@/agent/loop";
-import { StateManager } from "@/agent/state";
+import { type SerializedStreamEntry, StateManager } from "@/agent/state";
 import { FileCheckpointSaver } from "@/agent/store";
 import type { MessageMetadata, OutboundMessage } from "@/bus/message";
 import type { MessageBus } from "@/bus/queue";
@@ -18,6 +18,13 @@ interface StreamBuffer {
 	metadata?: MessageMetadata;
 }
 
+interface ToolStreamBuffer {
+	text: string;
+	toolCounts: Map<string, number>;
+	draftId: number;
+	lastEdit: number;
+}
+
 export class TelegramChannel extends Channel {
 	private bot: Bot;
 	private readonly editIntervalMs = 600;
@@ -26,14 +33,7 @@ export class TelegramChannel extends Channel {
 
 	private streamBufs = new Map<string, StreamBuffer>();
 	private turnStartTimes = new Map<string, number>();
-	private toolStreams = new Map<
-		string,
-		{
-			toolCounts: Map<string, number>;
-			draftId: number;
-			lastEdit: number;
-		}
-	>();
+	private toolStreams = new Map<string, ToolStreamBuffer>();
 
 	constructor(
 		bus: MessageBus,
@@ -279,7 +279,7 @@ export class TelegramChannel extends Channel {
 
 	private async saveStreamsToDisk(): Promise<void> {
 		try {
-			const entries = Array.from(this.streamBufs.entries()).map(
+			const entries = Array.from(this.streamBufs.entries()).map<SerializedStreamEntry>(
 				([key, buf]) => {
 					return [
 						key,
