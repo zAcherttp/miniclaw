@@ -8,19 +8,19 @@ describe("Centralized App StateManager Daemon", () => {
 	let tempHome: string;
 
 	beforeEach(async () => {
-		tempHome = path.join(os.tmpdir(), `miniclaw-state-test-${Date.now()}`);
-		await fs.mkdir(tempHome, { recursive: true });
+		tempHome = await fs.mkdtemp(path.join(os.tmpdir(), "miniclaw-state-test-"));
+		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
-		// Mock os.homedir or getAppDir path resolution by mocking path/process env
-		// StateManager filePath points to path.join(getAppDir(), "state.json")
-		// getAppDir() is located in C:\Users\Salad\.gemini\antigravity on Windows,
-		// but let's override StateManager.filePath directly for isolated testing!
+		// Each process needs its own directory; timestamp names can collide
+		// when Stryker runs several Vitest workers concurrently.
 		const testFilePath = path.join(tempHome, "state.json");
 		StateManager.filePath = testFilePath;
 	});
 
 	afterEach(async () => {
+		await StateManager.writePromise;
 		await fs.rm(tempHome, { recursive: true, force: true });
+		StateManager.filePath = undefined;
 		vi.restoreAllMocks();
 	});
 

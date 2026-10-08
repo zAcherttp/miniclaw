@@ -105,8 +105,22 @@ import type { AppConfig } from "@/config/schema";
 describe("Queue-based Inbound Retry & Recovery", () => {
 	let bus: MessageBus;
 	let config: AppConfig;
+	let activeLoops: AgentLoop[];
+
+	const waitForProcessed = async (chatId: string, calls: number) => {
+		await vi.waitFor(
+			async () => {
+				expect(mockGraphInvoke).toHaveBeenCalledTimes(calls);
+				expect(
+					(await StateManager.getActiveRequests())[chatId],
+				).toBeUndefined();
+			},
+			{ timeout: 5000 },
+		);
+	};
 
 	beforeEach(async () => {
+		activeLoops = [];
 		vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 		bus = new MessageBus();
 		if (fs.existsSync(tempHome)) {
@@ -137,7 +151,9 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		await StateManager.saveLastCronDate("chatWipe", todayStr);
 	});
 
-	afterEach(() => {
+	afterEach(async () => {
+		for (const loop of activeLoops) await loop.stop();
+		await StateManager.writePromise;
 		if (fs.existsSync(tempHome)) {
 			fs.rmSync(tempHome, { recursive: true, force: true });
 		}
@@ -147,8 +163,10 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 
 	it("should retry a failed request with exponential backoff on the queue", async () => {
 		let callCount = 0;
+		const attemptTimes: number[] = [];
 		mockGraphInvoke.mockImplementation(async () => {
 			callCount++;
+			attemptTimes.push(performance.now());
 			if (callCount === 1) {
 				throw new Error("Ollama connection refused (simulated)");
 			}
@@ -156,6 +174,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		});
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// Publish inbound request
@@ -167,25 +186,28 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			metadata: { message_id: "100" },
 		});
 
-		// Wait for the first attempt to process and fail (debounce = 250ms)
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await vi.waitFor(
+			async () => {
+				expect(mockGraphInvoke).toHaveBeenCalledTimes(1);
+				const active = await StateManager.getActiveRequests();
+				expect(active.chat123).toBeDefined();
+				expect(active.chat123.metadata?._retryCount).toBe(1);
+			},
+			{ timeout: 3000 },
+		);
 
-		// Verify first attempt ran and failed, and active request is saved
-		expect(mockGraphInvoke).toHaveBeenCalledTimes(1);
-		let active = await StateManager.getActiveRequests();
-		expect(active.chat123).toBeDefined();
-		expect(active.chat123.metadata?._retryCount).toBe(1);
+		await vi.waitFor(
+			async () => {
+				expect(mockGraphInvoke).toHaveBeenCalledTimes(2);
+				const active = await StateManager.getActiveRequests();
+				expect(active.chat123).toBeUndefined();
+			},
+			{ timeout: 5000 },
+		);
 
-		// Wait for retry (delay is 1000ms for attempt 1 + 250ms debounce)
-		await new Promise((resolve) => setTimeout(resolve, 1300));
-
-		// Verify second attempt was processed and succeeded
-		expect(mockGraphInvoke).toHaveBeenCalledTimes(2);
-		active = await StateManager.getActiveRequests();
-		expect(active.chat123).toBeUndefined(); // Cleared upon success
-
+		expect(attemptTimes[1] - attemptTimes[0]).toBeGreaterThanOrEqual(1000);
 		await agentLoop.stop();
-	});
+	}, 10000);
 
 	it("should recover and retry pending active requests on startup", async () => {
 		// Pre-populate StateManager with an active request representing an interrupted session
@@ -201,17 +223,19 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		mockGraphInvoke.mockResolvedValue({ messages: [] });
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 
 		// Startup the loop -> should trigger recoverPendingMessages
 		await agentLoop.start();
 
-		// Wait for the recovered message to process (debounce = 250ms)
-		await new Promise((resolve) => setTimeout(resolve, 350));
-
-		// Verify the request was recovered, processed, and cleared from active requests
-		expect(mockGraphInvoke).toHaveBeenCalledTimes(1);
-		const active = await StateManager.getActiveRequests();
-		expect(active.chat999).toBeUndefined();
+		await vi.waitFor(
+			async () => {
+				expect(mockGraphInvoke).toHaveBeenCalledTimes(1);
+				const active = await StateManager.getActiveRequests();
+				expect(active.chat999).toBeUndefined();
+			},
+			{ timeout: 5000 },
+		);
 
 		await agentLoop.stop();
 	});
@@ -321,6 +345,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		});
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// 2. Publish inbound request
@@ -333,7 +358,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		});
 
 		// Wait for processing (debounce = 250ms)
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await waitForProcessed("chat123", 1);
 
 		// 3. Verify consolidation agent was created and graph invoke was triggered with it
 		expect(createConsolidationAgent).toHaveBeenCalledWith(
@@ -354,6 +379,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		const publishOutboundSpy = vi.spyOn(bus, "publishOutbound");
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// 1. First request runs as "main" agent by default.
@@ -365,7 +391,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			content: "hello main",
 			metadata: { message_id: "101" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await waitForProcessed("chat123", 1);
 		expect(publishOutboundSpy).not.toHaveBeenCalledWith(
 			expect.objectContaining({
 				content: expect.stringContaining("You are now talking with"),
@@ -386,7 +412,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			content: "yes, save it",
 			metadata: { message_id: "102" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await waitForProcessed("chat123", 2);
 		expect(publishOutboundSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				content: "You are now talking with consolidation agent.",
@@ -406,7 +432,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			content: "hello main again",
 			metadata: { message_id: "103" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await waitForProcessed("chat123", 3);
 		expect(publishOutboundSpy).toHaveBeenCalledWith(
 			expect.objectContaining({
 				content: "You are now talking with main agent.",
@@ -423,6 +449,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		const { HumanMessage } = await import("@langchain/core/messages");
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// 1. Initial messages in main chat
@@ -446,7 +473,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			content: "yes, save it",
 			metadata: { message_id: "104" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 300));
+		await waitForProcessed("chatWipe", 1);
 
 		// Verify checkpointMessageCount is saved correctly in the state
 		const condState = await StateManager.getConsolidationState("chatWipe");
@@ -533,6 +560,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		mockGraphInvoke.mockClear();
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// Pre-populate checkpoint message
@@ -551,7 +579,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 			content: "run cron turn",
 			metadata: { message_id: "105" },
 		});
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		await waitForProcessed("chatCron", 1);
 
 		// Verify the daily cron ran, compacted history, and updated state date
 		const lastRunDate = await StateManager.getLastCronDate("chatCron");
@@ -588,6 +616,7 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		mockGraphInvoke.mockClear();
 
 		const agentLoop = new AgentLoop(config, bus);
+		activeLoops.push(agentLoop);
 		await agentLoop.start();
 
 		// Pre-populate checkpoint message
@@ -607,10 +636,24 @@ describe("Queue-based Inbound Retry & Recovery", () => {
 		});
 
 		// Wait for the loop to process the message
-		await new Promise((resolve) => setTimeout(resolve, 1000));
+		await vi.waitFor(
+			async () => {
+				expect(
+					(await StateManager.getConsolidationState("chatCronBypass"))?.active,
+				).toBe(true);
+				expect(await StateManager.getLastCronDate("chatCronBypass")).toBe(
+					new Date().toISOString().split("T")[0],
+				);
+				expect(
+					(await StateManager.getActiveRequests()).chatCronBypass,
+				).toBeUndefined();
+			},
+			{ timeout: 5000 },
+		);
 
 		// Verify consolidation state was activated
-		const condState = await StateManager.getConsolidationState("chatCronBypass");
+		const condState =
+			await StateManager.getConsolidationState("chatCronBypass");
 		expect(condState).not.toBeNull();
 		expect(condState?.active).toBe(true);
 
