@@ -1,14 +1,11 @@
-import { existsSync, mkdirSync } from "node:fs";
+import { existsSync, mkdtempSync } from "node:fs";
 import fs from "node:fs/promises";
 import os from "node:os";
 import path from "node:path";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 // Mock home directory to isolate tests
-const tempHome = path.join(os.tmpdir(), `miniclaw-skills-test-${Date.now()}`);
-if (!existsSync(tempHome)) {
-	mkdirSync(tempHome, { recursive: true });
-}
+const tempHome = mkdtempSync(path.join(os.tmpdir(), "miniclaw-skills-test-"));
 vi.spyOn(os, "homedir").mockReturnValue(tempHome);
 
 import {
@@ -31,6 +28,7 @@ describe("Skills System Integration", () => {
 	});
 
 	afterEach(async () => {
+		await StateManager.writePromise;
 		// Clean up
 		await fs.rm(tempHome, { recursive: true, force: true });
 		StateManager.filePath = undefined;
